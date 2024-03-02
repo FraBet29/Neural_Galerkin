@@ -5,6 +5,11 @@ import flax.linen as nn
 from typing import Callable
 import matplotlib.pyplot as plt
 from jax import flatten_util
+import optax
+from flax.training import train_state
+from torch.utils.data import Dataset, DataLoader
+from flax import serialization
+
 
 ##################################################################################################################
 ############################################## AC equation #######################################################
@@ -18,18 +23,14 @@ X_upper = 2 * jnp.pi
 T_lower = 0
 T_upper = 6
 
-# PDE parameters
-epsilon = 5 * 10 ** (-2)
-# a = lambda x, t: 1.05 + t * jnp.sin(x)
-
 # NN architecture
 d = 1 # input dimension
 m = 2 # nodes
 l = 3 # hidden layers
 L = 0.5 # parameter for the gaussian kernel
 n = 1000 # samples
-batch_size = 10 ** 5 # batch size (since n = 1000, we will take the whole dataset?)
-epochs = 10 ** 4 # number of epochs
+batch_size = 5000 # batch size (since n = 1000, we will take the whole dataset?)
+epochs = 5000 # number of epochs
 gamma = 0.1 # learning rate
 
 # Initial condition
@@ -62,8 +63,8 @@ class PeriodicPhi(nn.Module):
     @nn.compact
     def __call__(self, x):
         batch = x.shape[0] # x.shape = (batch, d)
-        w = self.param('w', self.param_init, self.m) # w.shape = (m, )
-        b = self.param('b', self.param_init, (self.m, self.d)) # b.shape = (m, d)
+        w = self.param('kernel', self.param_init, self.m) # w.shape = (m, )
+        b = self.param('bias', self.param_init, (self.m, self.d)) # b.shape = (m, d)
         x_ext = jnp.expand_dims(x, 1) # x_ext.shape = (batch, 1, d)
         if batch == 1:
             x_ext = jnp.expand_dims(x_ext, 0) # x_ext.shape = (1, 1, d)
@@ -83,23 +84,15 @@ class DeepNet(nn.Module):
     def __call__(self, x):
         batch = x.shape[0] # x.shape = (batch, d)
         net = nn.Sequential([PeriodicPhi(self.d, self.m, self.L),
-                            #   nn.Tanh(),
-                            #   nn.Dense(features=m),
-                            #   nn.Tanh(),
-                            #   nn.Dense(features=m),
-                            #   nn.Tanh(),
+                              nn.activation.tanh,
+                              nn.Dense(features=m),
+                              nn.activation.tanh,
+                              nn.Dense(features=m),
+                              nn.activation.tanh,
                               nn.Dense(features=1, use_bias=False)])
         if batch == 1:
             return jnp.squeeze(net(x), 0)
         return net(x)
-
-
-# Take gradient and then squeeze
-def gradsqz(f, *args, **kwargs):
-    '''
-    Function taken from: https://github.com/julesberman/RSNG/blob/main/allen_cahn.ipynb
-    '''
-    return lambda *fargs, **fkwargs: jnp.squeeze(jax.grad(f, *args, **kwargs)(*fargs, **fkwargs))
 
 
 def unraveler(f, unravel, axis=0):
@@ -119,44 +112,18 @@ def unraveler(f, unravel, axis=0):
 def init_net(net, key, x):
     net_apply, net_init = net.apply, net.init # PURE FUNCTIONS?
     theta_init = net_init(key, x)
-    print(jax.tree_map(lambda x: x, theta_init))
+    # print(jax.tree_map(lambda x: x, theta_init))
     theta_init_flat, unravel = flatten_util.ravel_pytree(theta_init) # ravel (flatten) a pytree of arrays down to a 1D array
     # theta_init_flat: 1D array representing the flattened and concatenated leaf values
     # unravel: callable for unflattening a 1D vector of the same length back to a pytree of the same structure as the input pytree
     u_scalar = unraveler(net_apply, unravel)
-    return u_scalar, theta_init_flat, unravel
+    return u_scalar, theta_init, theta_init_flat, unravel
 
 
-key1, key2 = jax.random.split(jax.random.key(0))
-x = jax.random.normal(key1, (10, d)) # Dummy input data
 # periodic_phi = PeriodicPhi(d, m, L)
 # u_scalar, theta_init, unravel = init_net(periodic_phi, key2, x)
-periodic_phi = deep_net = DeepNet(d, m, L)
-u_scalar, theta_init, unravel = init_net(deep_net, key2, x)
-
-
-# Batch the function over X points
-U = jax.vmap(u_scalar, (None, 0)) # jax.vmap(fun, in_axes)
-
-# Derivative w.r.t. theta
-U_dtheta = jax.vmap(jax.grad(u_scalar), (None, 0))
-
-# Spatial derivatives
-U_ddx = jax.vmap(gradsqz(gradsqz(u_scalar, 1), 1), (None, 0))
-
-
-# Source term for the AC equation
-def rhs(t, theta, x):
-    a = lambda x, t: 1.05 + t * jnp.sin(x)
-    u = U(theta, x)
-    print(u)
-    u_xx = U_ddx(theta, x)
-    print(u_xx)
-    # return (5e-2) * u_xx + a(x, t) * (u - u ** 3)
-    return (5e-2) * u_xx + (u - u ** 3)
-
-
-# print(rhs(0, theta_init, x))
+deep_net = DeepNet(d, m, L)
+print(deep_net)
 
 # psi = lambda x, w, b: -2 * w ** 2 * jnp.sin(jnp.pi * (x - b) / L) * jnp.cos(jnp.pi * (x - b) / L) * jnp.pi / L
 # phi_prime = lambda x, w, b: phi(x, w, b) * psi(x, w, b)
@@ -165,84 +132,126 @@ def rhs(t, theta, x):
 # print(u_check(x[0], jnp.ones(2), jnp.ones(2), jnp.array([-0.2714497, -0.7051541])))
 
 
-
-
-
-
-
-
-# Loss function and optimizer
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(deep_net.parameters(), lr=gamma, weight_decay=1e-6)
-
-
 ####### Initialization #######
 
 # Dataset definition
-class CreateDataset(torch.utils.data.Dataset):
+class CreateDataset(Dataset):
 
     def __init__(self, x, y):
-        self.x = torch.tensor(x, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32)
+        self.x = x
+        self.y = y
 
     def __getitem__(self, index):
-        sample = {
-            'point': self.x[index],
-            'solution': self.y[index]}
+        sample = (self.x[index], self.y[index])
         return sample
 
     def __len__(self):
         return len(self.x)
 
 
-def train_epoch(dataloader):
+# def collate_fn(batch):
+#     if isinstance(batch[0], jnp.ndarray):
+#         return jnp.stack(batch)
+#     elif isinstance(batch[0], tuple):
+#         return tuple(collate_fn(samples) for samples in zip(*batch))
+#     else:
+#         return jnp.asarray(batch)
+    
 
-    deep_net.train()
-     
-    for batch_idx, data in enumerate(dataloader):
-        # Select data for current batch
-        x_batch = data['point']
-        U_true_batch = data['solution']
-        x_batch = x_batch.to(device)
-        U_true_batch = U_true_batch.to(device)
-        # Forward pass
-        U_batch = deep_net(x_batch) # U.shape = (n, d)
-        loss = criterion(U_batch, U_true_batch)
-        # Backward pass
-        optimizer.zero_grad()
-        loss.backward()
-        # Update weights
-        optimizer.step()
-
-    return loss.item()
+# # @jax.jit
+# def mse_loss(model, params, x_batched, y_batched):
+#     '''
+#     Function taken from: https://flax.readthedocs.io/en/latest/guides/flax_fundamentals/flax_basics.html
+#     '''
+#     # Define the squared loss for a single pair (x, y)
+#     def squared_error(x, y):
+#         pred = model.apply(params, x)
+#         return jnp.inner(y - pred, y - pred) / 2.0
+#     # Vectorize the previous to compute the average of the loss on all samples
+#     return jnp.mean(jax.vmap(squared_error)(x_batched, y_batched), axis=0)
 
 
-def initialize_parameters():
+def make_mse_loss(model, xs, ys):
+
+    def mse_loss(params):
+
+        # Define the squared loss for a single pair (x,y)
+        def squared_error(x, y):
+            pred = model.apply(params, x)
+            # Inner because 'y' could have in general more than 1 dims
+            return jnp.inner(y - pred, y - pred) / 2.0
+
+        # Batched version via vmap
+        return jnp.mean(jax.vmap(squared_error)(xs, ys), axis=0)
+
+    return jax.jit(mse_loss)  # and finally we jit the result (mse_loss is a pure function)
+
+
+# https://huggingface.co/blog/afmck/flax-tutorial
+
+# # @jax.jit
+# def train_step(model, state: train_state.TrainState, batch: jnp.ndarray):
+    
+#     x_batched, y_batched = batch
+
+#     def loss_fn(params):
+#         preds = state.apply_fn({'params': params}, x_batched)
+#         loss = mse_loss(model, {'params': params}, x_batched, y_batched)
+#         return loss, preds
+
+#     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
+#     _, grads = gradient_fn(state.params)
+#     state = state.apply_gradients(grads=grads)
+#     metrics = compute_metrics(model, state.params, x_batched, y_batched)
+#     print("Metrics:", metrics)
+#     return state, metrics
+
+
+def init_neural_galerkin(deep_net):
 	
 	# Find the initial parameters by fitting a least squares problem
 	# Equivalently, train the shallow neural network at time t = 0
 
     # Each batch should contain n = 1000 points (?)
-	
-	# Sample points uniformly in [0, 1]
-    x = jnp.random.rand(n * 1, d)
+
+    # Generate random keys and input data
+    key1, key2 = jax.random.split(jax.random.key(0))
+    x_init = jax.random.uniform(key1, (batch_size, d), minval=X_lower, maxval=X_upper)
 
     # Define target
-    U_true = u_0(x)
-
+    u_true = u_0(x_init)
+	
+    # Initialize the model
+    # state, _, theta_init, _, _ = init_train_state(deep_net, key2, x)
+    u_scalar, theta_init, theta_init_flat, unravel = init_net(deep_net, key2, x_init)
+    
     # Define dataset and dataloader
-    dataset = CreateDataset(x, U_true)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    # dataset = CreateDataset(x_init, u_true)
+    # dataloader = DataLoader(dataset, batch_size=n, collate_fn=collate_fn, shuffle=True)
+
+    # Define the optimizer
+    opt = optax.adam(learning_rate=gamma)
+    opt_state = opt.init(theta_init)
+
+    # Define the loss function
+    mse_loss = make_mse_loss(deep_net, x_init, u_true)
+    value_and_grad_fn = jax.value_and_grad(mse_loss)
+
+    # Define a TrainState
+    # state = train_state.TrainState.create(apply_fn=deep_net.apply, tx=opt, params=theta_init['params'])
 
     losses = []
 
-	# Fit the initial condition
-    print("Fitting the initial condition...")
+    # Fitting the initial condition
     for epoch in range(epochs):
-        loss = train_epoch(dataloader)
+        loss, grads = value_and_grad_fn(theta_init)
+        updates, opt_state = opt.update(grads, opt_state)
+        theta_init = optax.apply_updates(theta_init, updates)
         losses.append(loss)
-        if epoch % 1000 == 0:
-            print("	Epoch: {}/{} - Loss: {}".format(epoch, epochs, loss))
+
+        if epoch % 100 == 0:
+            err = jnp.linalg.norm(u_true - deep_net.apply(theta_init, x_init)) / jnp.linalg.norm(u_true)
+            print(f'epoch {epoch}, loss = {loss}, error = {err}')
 
     # Plot the loss
     plt.plot(losses)
@@ -250,20 +259,96 @@ def initialize_parameters():
     plt.ylabel('Loss')
     plt.show()
 
-    # Move model to the CPU
-    deep_net.cpu()
-
     # Plot the true and fitted initial conditions
-    x_plot = torch.linspace(X_lower, X_upper, 100).reshape(-1, 1)
-    with torch.no_grad():
-        U = deep_net(x_plot)
-    plt.plot(x_plot.numpy(), u_0(x_plot), label='True')
-    plt.plot(x_plot.numpy(), U.numpy(), label='Fitted')
+    x_plot = jnp.linspace(X_lower, X_upper, 100).reshape(-1, 1)
+    u_pred = deep_net.apply(theta_init, x_plot)
+    plt.plot(x_plot, u_0(x_plot), label='True')
+    plt.plot(x_plot, u_pred, label='Fitted')
     plt.legend()
     plt.show()
 
     # Compute relative error
-    relative_error = torch.linalg.norm(U - u_0(x_plot)) / torch.linalg.norm(u_0(x_plot))
+    relative_error = jnp.linalg.norm(u_pred - u_0(x_plot)) / jnp.linalg.norm(u_0(x_plot))
     print("Relative error:", relative_error)
 
-# initialize_parameters()
+    return theta_init
+
+
+# theta_init = init_neural_galerkin(deep_net)
+
+# Save the initial parameters
+# jnp.save('theta_init.npy', theta_init)
+
+
+####### Time evolution #######
+
+deep_net = DeepNet(d, m, L)
+
+# Initialize the model
+key1, key2 = jax.random.split(jax.random.key(0))
+x = jax.random.uniform(key1, (n, d), minval=X_lower, maxval=X_upper)
+u_scalar, theta, theta_flat, unravel = init_net(deep_net, key2, x)
+
+# Reload the initial parameters
+theta_init = jnp.load('theta_init.npy', allow_pickle=True).item()
+
+# bytes_output = serialization.to_bytes(theta_init)
+# serialization.from_bytes(theta, bytes_output)
+# serialization.from_state_dict(theta, theta_init) # does not work (keys in different order)
+
+theta['params']['PeriodicPhi_0'] = theta_init['params']['PeriodicPhi_0']
+theta['params']['Dense_0'] = theta_init['params']['Dense_0']
+theta['params']['Dense_1'] = theta_init['params']['Dense_1']
+theta['params']['Dense_2'] = theta_init['params']['Dense_2']
+
+# x_plot = jnp.linspace(X_lower, X_upper, 100).reshape(-1, 1)
+# u_pred = deep_net.apply(theta, x_plot)
+# plt.plot(x_plot, u_0(x_plot), label='True')
+# plt.plot(x_plot, u_pred, label='Fitted')
+# plt.legend()
+# plt.show()
+
+
+# Take gradient and then squeeze
+def gradsqz(f, *args, **kwargs):
+    '''
+    Function taken from: https://github.com/julesberman/RSNG/blob/main/allen_cahn.ipynb
+    '''
+    return lambda *fargs, **fkwargs: jnp.squeeze(jax.grad(f, *args, **kwargs)(*fargs, **fkwargs))
+
+
+def neural_galerkin(deep_net, theta):
+
+    # PDE parameters
+    epsilon = 5e-2
+    a = lambda x, t: 1.05 + t * jnp.sin(x)
+
+    # Samples
+    x = jax.random.uniform(key1, (n, d), minval=X_lower, maxval=X_upper)
+
+    # Function at current iteration
+    u_scalar = unraveler(deep_net.apply, unravel)
+
+    # Batch the function over X points
+    U = jax.vmap(u_scalar, (None, 0)) # jax.vmap(fun, in_axes)
+
+    # Derivative w.r.t. theta
+    U_dtheta = jax.vmap(jax.grad(u_scalar), (None, 0))
+
+    # Spatial derivatives
+    U_ddx = jax.vmap(gradsqz(gradsqz(u_scalar, 1), 1), (None, 0))
+
+    # Source term for the AC equation
+    def rhs(t, theta, x):
+        u = U(theta, x)
+        print(u)
+        u_xx = U_ddx(theta, x)
+        print(u_xx)
+        return epsilon * u_xx - a(x, t) * (u - u ** 3)
+
+
+
+
+
+
+# neural_galerkin(deep_net, theta)
