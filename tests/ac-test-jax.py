@@ -9,6 +9,7 @@ import optax
 from flax.training import train_state
 from torch.utils.data import Dataset, DataLoader
 from flax import serialization
+from matplotlib.animation import FuncAnimation
 
 
 ##################################################################################################################
@@ -20,8 +21,12 @@ from flax import serialization
 # Space-time domain
 X_lower = 0
 X_upper = 2 * jnp.pi
-T_lower = 0
-T_upper = 6
+T = 4
+dt = 0.01
+
+# PDE parameters
+epsilon = 5e-2
+a = lambda x, t: (1.05 + t * jnp.sin(x)).squeeze()
 
 # NN architecture
 d = 1 # input dimension
@@ -316,39 +321,61 @@ def gradsqz(f, *args, **kwargs):
     '''
     return lambda *fargs, **fkwargs: jnp.squeeze(jax.grad(f, *args, **kwargs)(*fargs, **fkwargs))
 
+# Batch the function over X points
+U = jax.vmap(u_scalar, (None, 0)) # jax.vmap(fun, in_axes)
+
+# Derivative w.r.t. theta
+U_dtheta = jax.vmap(jax.grad(u_scalar), (None, 0))
+
+# Spatial derivatives
+U_ddx = jax.vmap(gradsqz(gradsqz(u_scalar, 1), 1), (None, 0))
+
+# Source term for the AC equation
+def rhs(t, theta, x):
+    u = U(theta, x)
+    u_xx = U_ddx(theta, x)
+    return epsilon * u_xx - a(x, t) * (u - u ** 3)
+
 
 def neural_galerkin(deep_net, theta):
 
-    # PDE parameters
-    epsilon = 5e-2
-    a = lambda x, t: 1.05 + t * jnp.sin(x)
+    solution = []
 
-    # Samples
-    x = jax.random.uniform(key1, (n, d), minval=X_lower, maxval=X_upper)
+    t = 0
 
-    # Function at current iteration
-    u_scalar = unraveler(deep_net.apply, unravel)
+    while t < T:
 
-    # Batch the function over X points
-    U = jax.vmap(u_scalar, (None, 0)) # jax.vmap(fun, in_axes)
+        if int(t / dt) % 20 == 0:
+            print(f'Time: {t:.2f}')
+        
+        # Sample points in the spatial domain
+        x = jax.random.uniform(jax.random.key(int(t * 1e4)), (n, d), minval=X_lower, maxval=X_upper)
+        x_plot = jnp.linspace(X_lower, X_upper, 100).reshape(-1, 1) # for plotting
 
-    # Derivative w.r.t. theta
-    U_dtheta = jax.vmap(jax.grad(u_scalar), (None, 0))
+        # Flatten the parameters
+        theta_flat = jax.flatten_util.ravel_pytree(theta)[0]
+        
+        # Approximate M and F
+        u_dth = U_dtheta(theta_flat, x)
+        M = jnp.mean(u_dth[:, :, jnp.newaxis] * u_dth[:, jnp.newaxis, :], axis=0)
+        f = rhs(t, theta, x) # source term
+        F = jnp.mean(u_dth * f[:, jnp.newaxis], axis=0)
 
-    # Spatial derivatives
-    U_ddx = jax.vmap(gradsqz(gradsqz(u_scalar, 1), 1), (None, 0))
+        # Update the parameters
+        theta_flat = jnp.linalg.solve(M, F)
+        # TODO: IMPLICIT EULER
 
-    # Source term for the AC equation
-    def rhs(t, theta, x):
-        u = U(theta, x)
-        print(u)
-        u_xx = U_ddx(theta, x)
-        print(u_xx)
-        return epsilon * u_xx - a(x, t) * (u - u ** 3)
+        # Update the solution
+        u_scalar = unraveler(deep_net.apply, unravel)
+
+        # Save current solution for plotting
+        theta = unravel(theta_flat)
+        u = U(theta, x_plot)
+        solution.append(u)
+
+        t = t + dt
+
+    return solution
 
 
-
-
-
-
-# neural_galerkin(deep_net, theta)
+solution = neural_galerkin(deep_net, theta)
