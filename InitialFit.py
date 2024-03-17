@@ -22,7 +22,7 @@ def loss_fn_wrapper(model, xs, us):
     return jax.jit(loss_fn) # pure function
 
 
-def init_neural_galerkin(shallow_net):
+def init_neural_galerkin(net):
     '''
     Find the initial parameters by training a neural network at t = 0.
     '''
@@ -36,7 +36,7 @@ def init_neural_galerkin(shallow_net):
     u_true = exactKdVTwoSol(x_init, 0)
 
     # Initialize the model
-    theta_init = shallow_net.init(key2, x_init)
+    theta_init = net.init(key2, x_init)
 
     # Define dataset and dataloader
     # dataset = CreateDataset(x_init, u_true)
@@ -49,11 +49,11 @@ def init_neural_galerkin(shallow_net):
     opt_state = opt.init(theta_init)
 
     # Define the loss function
-    mse_loss = loss_fn_wrapper(shallow_net, x_init, u_true)
+    mse_loss = loss_fn_wrapper(net, x_init, u_true)
     value_and_grad_fn = jax.value_and_grad(mse_loss)
 
     # Define a TrainState
-    # state = train_state.TrainState.create(apply_fn=shallow_net.apply, tx=opt, params=theta_init['params'])
+    # state = train_state.TrainState.create(apply_fn=net.apply, tx=opt, params=theta_init['params'])
 
     losses = []
 
@@ -66,7 +66,7 @@ def init_neural_galerkin(shallow_net):
         losses.append(loss)
 
         if epoch % 1000 == 0:
-            err = jnp.linalg.norm(u_true - shallow_net.apply(theta_init, x_init)) / jnp.linalg.norm(u_true)
+            err = jnp.linalg.norm(u_true - net.apply(theta_init, x_init)) / jnp.linalg.norm(u_true)
             print(f'epoch {epoch}, loss = {loss}, error = {err}')
 
     # Print the initial parameters
@@ -82,7 +82,7 @@ def init_neural_galerkin(shallow_net):
 
     # Plot the true and fitted initial conditions
     x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N)
-    u_pred = shallow_net.apply(theta_init, x_plot.reshape(-1, 1))
+    u_pred = net.apply(theta_init, x_plot.reshape(-1, 1))
     plt.plot(x_plot, exactKdVTwoSol(x_plot, 0), label='True')
     plt.plot(x_plot, u_pred, label='Fitted')
     plt.title('Initial fit - True vs Fitted')

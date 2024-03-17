@@ -43,17 +43,13 @@ class TrainingData:
 
 ####### Define data #######
 
-run_training = False
-
 print('Defining problem data...')
 problem_data = ProblemData(name='kdv', d=1, domain=(-20, 40), T=4, n=1000)
 print(problem_data)
 
-if run_training:
-
-    print('Defining training data...')
-    training_data = TrainingData(m=10, batch_size=2000, epochs=10000)
-    print(training_data)
+print('Defining training data...')
+training_data = TrainingData(m=10, batch_size=2000, epochs=10000)
+print(training_data)
 
 L = 60 # parameter for the gaussian kernel
 
