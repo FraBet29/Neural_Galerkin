@@ -43,9 +43,11 @@ def init_neural_galerkin(net, problem_data, training_data):
     # dataloader = DataLoader(dataset, batch_size=n, collate_fn=collate_fn, shuffle=True)
 
     # Define the optimizer
-    opt = optax.adam(learning_rate=training_data.gamma)
+    # opt = optax.adam(learning_rate=training_data.gamma)
     # opt = optax.adam(optax.cosine_decay_schedule(init_value=gamma, decay_steps=1000))
-    # opt = optax.adam(optax.linear_schedule(init_value=gamma, end_value=gamma/10, transition_steps=1000, transition_begin=1000))
+    opt = optax.adam(optax.linear_schedule(init_value=training_data.gamma, 
+                                           end_value=training_data.gamma / 10, 
+                                           transition_steps=1000, transition_begin=1000))
     opt_state = opt.init(theta_init)
 
     # Define the loss function
