@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import matplotlib.pyplot as plt
-from Data import *
+from time import time
 from NeuralNetwork import *
 
 
@@ -22,7 +22,7 @@ def loss_fn_wrapper(model, xs, us):
     return jax.jit(loss_fn) # pure function
 
 
-def init_neural_galerkin(net):
+def init_neural_galerkin(net, problem_data, training_data):
     '''
     Find the initial parameters by training a neural network at t = 0.
     '''
@@ -30,10 +30,10 @@ def init_neural_galerkin(net):
     # Generate random keys and input data
     key1, key2 = jax.random.split(jax.random.key(0))
     x_init = jax.random.uniform(key1, (training_data.batch_size, problem_data.d), 
-                                minval=problem_data.domain[0], maxval=problem_data.domain[1]).reshape(-1, 1)
+                                minval=problem_data.domain[0], maxval=problem_data.domain[1])
 
     # Define the target
-    u_true = exactKdVTwoSol(x_init, 0)
+    u_true = problem_data.initial_fn(x_init)
 
     # Initialize the model
     theta_init = net.init(key2, x_init)
@@ -59,6 +59,8 @@ def init_neural_galerkin(net):
 
     # Fit the initial condition
     print('Fitting the initial condition...')
+    timer = time()
+
     for epoch in range(training_data.epochs):
         loss, grads = value_and_grad_fn(theta_init)
         updates, opt_state = opt.update(grads, opt_state)
@@ -68,10 +70,8 @@ def init_neural_galerkin(net):
         if epoch % 1000 == 0:
             err = jnp.linalg.norm(u_true - net.apply(theta_init, x_init)) / jnp.linalg.norm(u_true)
             print(f'epoch {epoch}, loss = {loss}, error = {err}')
-
-    # Print the initial parameters
-    # theta_init_flat = jax.flatten_util.ravel_pytree(theta_init)[0]
-    # print(theta_init_flat)
+    
+    print(f'Elapsed time: {time() - timer:.0f}s')
 
     # Plot the loss
     plt.plot(losses)
@@ -83,14 +83,14 @@ def init_neural_galerkin(net):
     # Plot the true and fitted initial conditions
     x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N)
     u_pred = net.apply(theta_init, x_plot.reshape(-1, 1))
-    plt.plot(x_plot, exactKdVTwoSol(x_plot, 0), label='True')
+    plt.plot(x_plot, problem_data.initial_fn(x_plot), label='True')
     plt.plot(x_plot, u_pred, label='Fitted')
     plt.title('Initial fit - True vs Fitted')
     plt.legend()
     plt.show()
 
-    # Compute relative error
-    relative_error = jnp.linalg.norm(u_pred - exactKdVTwoSol(x_plot, 0)) / jnp.linalg.norm(exactKdVTwoSol(x_plot, 0))
+    # Compute the relative error
+    relative_error = jnp.linalg.norm(u_pred - problem_data.initial_fn(x_plot)) / jnp.linalg.norm(problem_data.initial_fn(x_plot))
     print("Relative error of the initial fit:", relative_error)
 
     return theta_init
