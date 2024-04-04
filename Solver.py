@@ -15,14 +15,15 @@ from Sampler import *
 #         raise ValueError(f'Unknown solver: {name}.')
 
 
-def runge_kutta_scheme(theta_flat, problem_data, n, U, M_fn, F_fn, sampler='uniform'):
+def runge_kutta_scheme(theta_flat, problem_data, n, U, M_fn, F_fn, r_fn=None, sampler='uniform', x_init=None):
 
     # Sample points in the spatial domain
     if sampler == 'uniform':
         x = uniform_sampling(problem_data, n)
     elif sampler == 'adaptive':
-        raise NotImplementedError
-        # x = sampler(...)
+        if x_init is None:
+            raise ValueError('Initial points must be provided for adaptive sampling.')
+        x = x_init
     else:
         raise ValueError(f'Unknown sampler: {sampler}.')
     
@@ -35,7 +36,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, U, M_fn, F_fn, sampler='unif
     solution = []
     timesteps = []
 
-    scheme = scipy.integrate.RK45(rhs_RK45, 0, theta_flat, problem_data.T, rtol=1e-4)
+    scheme = scipy.integrate.RK45(rhs_RK45, 0, theta_flat, problem_data.T, max_step=problem_data.dt, rtol=1e-4)
 
     while scheme.t < problem_data.T:
 
@@ -45,8 +46,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, U, M_fn, F_fn, sampler='unif
         if sampler == 'uniform':
             x = uniform_sampling(problem_data, n, int(scheme.t * 1e6))
         elif sampler == 'adaptive':
-            raise NotImplementedError
-            # x = sampler(...)
+            x = adaptive_sampling(theta_flat, problem_data, n, x, scheme.t, M_fn, F_fn, r_fn)
         else:
             raise ValueError(f'Unknown sample mode: {sampler}.')
         
