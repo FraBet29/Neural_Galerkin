@@ -2,10 +2,10 @@ import jax
 import jax.numpy as jnp
 
 
-def compute_error(solution, timesteps, exact_solution, problem_data):
+def compute_error(solution, exact_solution, problem_data):
 
     x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N)
-    t_plot = jnp.array(timesteps)
+    t_plot = jnp.linspace(0, problem_data.T, int(problem_data.T / problem_data.dt) + 1)
     ref_solution = exact_solution(x_plot, t_plot).T
     space_time_solution = jnp.array(solution) # (time, space)
 

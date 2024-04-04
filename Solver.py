@@ -2,39 +2,60 @@ import jax
 import jax.numpy as jnp
 import optax
 import scipy
+from Sampler import *
 
 
-def backward_euler_scheme(theta_flat, x, t, r_loss):
-	'''
-	Implicit Euler scheme with ADAM. 
-	'''
-	theta_flat_k = jnp.copy(theta_flat)
-	optimizer = optax.adam(1e-3)
-	opt_state = optimizer.init(theta_flat)
-	
-	for _ in range(50):
-		# if i % 10 == 0:
-		#     print(f'Adam iter: {i}/100')
-		#     print(r_loss(theta_flat, theta_flat_k, x, t))
-		grads = jax.grad(r_loss)(theta_flat, theta_flat_k, x, t)
-		updates, opt_state = optimizer.update(grads, opt_state)
-		theta_flat = optax.apply_updates(theta_flat, updates)
+# def solver(name, *args):
+#     '''
+#     ODE solver.
+#     '''
+#     if name == 'rk45':
+#         return runge_kutta_scheme(*args)
+#     else:
+#         raise ValueError(f'Unknown solver: {name}.')
 
-	# print(f'Implicit Euler - ADAM residual: {r_loss(theta_flat, theta_flat_k, x, t):.5f}')
+
+def runge_kutta_scheme(theta_flat, problem_data, n, U, M_fn, F_fn, sampler='uniform'):
+
+    # Sample points in the spatial domain
+    if sampler == 'uniform':
+        x = uniform_sampling(problem_data, n)
+    elif sampler == 'adaptive':
+        raise NotImplementedError
+        # x = sampler(...)
+    else:
+        raise ValueError(f'Unknown sampler: {sampler}.')
     
-	return theta_flat
-
-
-def runge_kutta_scheme(theta_flat, x, t, dt, M_fn, F_fn):
-    
-    def rhs_RK45(theta_flat, x, t, M_fn, F_fn):
+    def rhs_RK45(t, theta_flat):
         return jnp.linalg.lstsq(M_fn(theta_flat, x), F_fn(theta_flat, x, t))[0]
+
+    # Points for plotting and error evaluation
+    x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N).reshape(-1, 1)
     
-    def rhs_RK45_wrapper(t, theta_flat):
-        return rhs_RK45(theta_flat, x, t, M_fn, F_fn)
-    
-    theta_flat_k = jnp.copy(theta_flat)
-    scheme = scipy.integrate.RK45(rhs_RK45_wrapper, t, theta_flat_k, t + dt)
-    scheme.step()
-    
-    return scheme.y
+    solution = []
+    timesteps = []
+
+    scheme = scipy.integrate.RK45(rhs_RK45, 0, theta_flat, problem_data.T, rtol=1e-4)
+
+    while scheme.t < problem_data.T:
+
+        print(f'  t = {scheme.t:.5f}')
+
+        # Sample points in the spatial domain
+        if sampler == 'uniform':
+            x = uniform_sampling(problem_data, n, int(scheme.t * 1e6))
+        elif sampler == 'adaptive':
+            raise NotImplementedError
+            # x = sampler(...)
+        else:
+            raise ValueError(f'Unknown sample mode: {sampler}.')
+        
+        # Integration step
+        scheme.step()
+        timesteps.append(scheme.t)
+
+        # Save current solution
+        u = U(scheme.y, x_plot)
+        solution.append(u)
+        
+    return solution, timesteps

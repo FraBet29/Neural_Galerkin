@@ -19,7 +19,8 @@ def unraveler(f, unravel, axis=0):
             args = list(args)
             args[axis] = unravel(val)
             args = tuple(args)
-        return f(*args, **kwargs) # evaluate the neural network on the unflattened parameters
+        # return f(*args, **kwargs) # evaluate the neural network on the unflattened parameters
+        return f(*args, **kwargs).squeeze() # evaluate the neural network on the unflattened parameters, squeeze the output to return a scalar
     return wrapper
 
 
@@ -28,7 +29,5 @@ def gradsqz(f, *args, **kwargs):
     Function taken from: https://github.com/julesberman/RSNG/blob/main/allen_cahn.ipynb
     Args:
         f: callable, function to be differentiated
-        args: tuple, arguments to f
-        kwargs: dict, keyword arguments to f
     '''
     return lambda *fargs, **fkwargs: jnp.squeeze(jax.grad(f, *args, **kwargs)(*fargs, **fkwargs))

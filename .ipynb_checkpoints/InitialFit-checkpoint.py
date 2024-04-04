@@ -64,6 +64,7 @@ def init_neural_galerkin(net, problem_data, training_data):
 
     for epoch in range(training_data.epochs):
         loss, grads = value_and_grad_fn(theta_init)
+        print(jnp.max(grads), jnp.min(grads))
         updates, opt_state = opt.update(grads, opt_state)
         theta_init = optax.apply_updates(theta_init, updates)
         losses.append(loss)

@@ -15,11 +15,13 @@ class ProblemData:
 
 class TrainingData:
 
-    def __init__(self, m, batch_size=1000, epochs=1000, gamma=0.1):
+    def __init__(self, m, batch_size=1000, epochs=1000, gamma=0.1, seed=0, scheduler=None):
         self.m = m # number of neurons per layer
         self.batch_size = batch_size # batch size
         self.epochs = epochs # number of epochs
         self.gamma = gamma # learning rate
+        self.seed = seed # seed for reproducibility
+        self.scheduler = scheduler # learning rate scheduler
 
     def __str__(self):
-        return f'Training data:\n  m: {self.m}, batch size: {self.batch_size}, epochs: {self.epochs}, gamma: {self.gamma}'
+        return f'Training data:\n  m: {self.m}, batch size: {self.batch_size}, epochs: {self.epochs}, gamma: {self.gamma}, seed: {self.seed}, scheduler: {self.scheduler}'
