@@ -22,7 +22,7 @@ def loss_fn_wrapper(model, xs, us):
     return jax.jit(loss_fn) # pure function
 
 
-def init_neural_galerkin(net, problem_data, training_data):
+def init_neural_galerkin(net, problem_data, training_data, theta_init=None):
     '''
     Find the initial parameters by training a neural network at t = 0.
     '''
@@ -36,7 +36,8 @@ def init_neural_galerkin(net, problem_data, training_data):
     u_true = problem_data.initial_fn(x_init)
 
     # Initialize the model
-    theta_init = net.init(key2, x_init)
+    if theta_init == None:
+        theta_init = net.init(key2, x_init)
 
     # Define dataset and dataloader
     # dataset = CreateDataset(x_init, u_true)
@@ -68,7 +69,7 @@ def init_neural_galerkin(net, problem_data, training_data):
         theta_init = optax.apply_updates(theta_init, updates)
         losses.append(loss)
 
-        if epoch % 100 == 0:
+        if epoch % 1000 == 0:
             err = jnp.linalg.norm(u_true - net.apply(theta_init, x_init)) / jnp.linalg.norm(u_true)
             print(f'epoch {epoch}, loss = {loss}, error = {err}')
     

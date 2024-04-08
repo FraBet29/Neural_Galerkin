@@ -63,7 +63,8 @@ def plot_error(errors, timesteps, title='Error'):
 	plt.show()
 
 
-def plot_error_comparison(errors_list, timesteps_list, title='Error comparison'):
+def plot_error_comparison(errors_list, timesteps_list, names_list, title='Error comparison'):
+	assert(len(errors_list) == len(timesteps_list) == len(names_list))
 	for errors, timesteps in zip(errors_list, timesteps_list):
 		t_plot = jnp.array(timesteps)
 		errors = jnp.array(errors)
@@ -71,7 +72,7 @@ def plot_error_comparison(errors_list, timesteps_list, title='Error comparison')
 	plt.axhline(y=1, color='r', linestyle='-')
 	plt.xlabel('t')
 	plt.ylim([min(1e-3, 1e1 * jnp.min(errors)), max(1e2, 1e1 * jnp.max(errors))])
-	plt.legend(['NG', 'linear NG', 'equidistant NG'])
+	plt.legend(names_list)
 	plt.title(title)
 	plt.grid()
 	plt.show()

@@ -51,14 +51,14 @@ def sample_from_function(f, g, C, n, max_it=1000):
 
 
 @jax.jit
-def SVGD_kernel(theta, h):
+def SVGD_kernel(z, h):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
     # sq_dist = pdist(theta)
     # pairwise_dists = squareform(sq_dist) ** 2
-    theta_norm_squared = jnp.sum(theta ** 2, axis=1, keepdims=True)
-    pairwise_dists = theta_norm_squared + theta_norm_squared.T - 2 * jnp.dot(theta, theta.T)
+    z_norm_squared = jnp.sum(z ** 2, axis=1, keepdims=True)
+    pairwise_dists = z_norm_squared + z_norm_squared.T - 2 * jnp.dot(z, z.T)
     # if h < 0: # median trick
     #     h = jnp.median(pairwise_dists)  
     #     h = jnp.sqrt(0.5 * h / jnp.log(theta.shape[0] + 1))
@@ -66,11 +66,11 @@ def SVGD_kernel(theta, h):
     # compute the rbf kernel
     Kxy = jnp.exp(- pairwise_dists / h ** 2 / 2)
 
-    dxkxy = - jnp.matmul(Kxy, theta)
+    dxkxy = - jnp.matmul(Kxy, z)
     sumkxy = jnp.sum(Kxy, axis=1)
-    # for i in range(theta.shape[1]):
-    #     dxkxy = dxkxy.at[:, i].set(dxkxy[:, i] + jnp.multiply(theta[:, i], sumkxy))
-    dxkxy += jnp.multiply(theta, jnp.expand_dims(sumkxy, axis=1)) # vectorized
+    # for i in range(z.shape[1]):
+    #     dxkxy = dxkxy.at[:, i].set(dxkxy[:, i] + jnp.multiply(z[:, i], sumkxy))
+    dxkxy += jnp.multiply(z, jnp.expand_dims(sumkxy, axis=1)) # vectorized
     dxkxy /= (h ** 2)
     return (Kxy, dxkxy)
 
@@ -79,21 +79,19 @@ def SVGD_update(x0, lnprob, n_iter=1000, stepsize=1e-3, alpha=1.0, debug=False):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''    
-    theta = jnp.copy(x0) 
+    z = jnp.copy(x0) 
 
     for iter in range(n_iter):
         if debug and (iter + 1) % 1000 == 0:
             print('iter', str(iter + 1))
-
-        lnpgrad = lnprob(theta.squeeze()).reshape(-1, 1) # lnpgrad: (n, d)
+        lnpgrad = lnprob(z.squeeze()).reshape(-1, 1) # lnpgrad: (n, d)
         # calculating the kernel matrix
-        kxy, dxkxy = SVGD_kernel(theta, h=0.05) # kxy: (n, n), dxkxy: (n, d)
-        grad_theta = alpha * (jnp.matmul(kxy, lnpgrad) + dxkxy) / x0.shape[0] # grad_theta: (n, d)
-        
+        kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
+        grad_z = alpha * (jnp.matmul(kxy, lnpgrad) + dxkxy) / x0.shape[0] # grad_z: (n, d)
         # vanilla update
-        theta = theta + stepsize * grad_theta
+        z = z + stepsize * grad_z
         
-    return theta
+    return z
 
 
 def predictor_corrector(theta_flat, x, t, dt, M_fn, F_fn):
@@ -102,24 +100,27 @@ def predictor_corrector(theta_flat, x, t, dt, M_fn, F_fn):
     '''
     M = M_fn(theta_flat, x)
     F = F_fn(theta_flat, x, t)
-    theta_flat_pred = theta_flat + dt * jnp.linalg.lstsq(M, F)[0]
-    return theta_flat_pred
+    # theta_flat_pred = theta_flat + dt * jnp.linalg.lstsq(M, F)[0]
+    # return theta_flat_pred
+    return jnp.linalg.lstsq(M, F)[0]
 
 
 def adaptive_sampling(theta_flat, problem_data, n, x, t, M_fn, F_fn, r_fn):
     '''
     Adaptive sampling with SVGD.
     '''
-    alpha = 1.0 # scaling parameter... WHICH VALUE?
     gamma = 0.25 # tempering parameter
     epsilon = 0.05 # step size
     steps = 500
+    alpha = problem_data.dt / epsilon # scaling parameter
 
     # Predictor-corrector scheme
-    theta_flat_pred = predictor_corrector(theta_flat, x, t, problem_data.dt, M_fn, F_fn)
+    # theta_flat_pred = predictor_corrector(theta_flat, x, t, problem_data.dt, M_fn, F_fn)
+    delta_theta_flat = predictor_corrector(theta_flat, x, t, problem_data.dt, M_fn, F_fn)
 
     # The target measure is proportional to the residual scaled by a tempering parameter
-    mu = lambda y: jnp.abs(r_fn(theta_flat, theta_flat_pred - theta_flat, y, t)) ** (2 * gamma)
+    # mu = lambda y: jnp.abs(r_fn(theta_flat, theta_flat_pred - theta_flat, y, t)) ** (2 * gamma)
+    mu = lambda y: jnp.abs(r_fn(theta_flat, delta_theta_flat, y, t)) ** (2 * gamma)
     log_mu = lambda y: jnp.log(mu(y)) # log(mu) = - V
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
