@@ -30,7 +30,6 @@ def SVGD_kernel(z, h):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
-    z = z.reshape(-1, 1)
     # sq_dist = pdist(theta)
     # pairwise_dists = squareform(sq_dist) ** 2
     z_norm_squared = jnp.sum(z ** 2, axis=1, keepdims=True)
@@ -51,16 +50,17 @@ def SVGD_kernel(z, h):
     return (Kxy, dxkxy)
 
 
-def SVGD_update(z, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0):
+def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
+    z = jnp.copy(z0)
+
     for s in range(steps):
-        # log_mu_dx_val = log_mu_dx(x.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
-        log_mu_dx_val = log_mu_dx(z) # log_mu_dx: (n, d)
+        log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
         # Calculating the kernel matrix
         kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
-        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z.shape[0] # grad_x: (n, d)
+        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
         # Vanilla update
         z = z + epsilon * grad_z
         
