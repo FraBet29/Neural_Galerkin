@@ -60,7 +60,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         if sampler == 'uniform':
             x = uniform_sampling(problem_data, n, int(scheme.t * 1e6))
         elif sampler == 'svgd':
-            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=100)
+            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250)
         else:
             raise ValueError(f'Unknown sample mode: {sampler}.')
         

@@ -63,7 +63,9 @@ def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0):
         grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
         # Vanilla update
         z = z + epsilon * grad_z
-        
+    
+    # print(f'SVGD iterations: {s + 1}')
+
     return z
 
 

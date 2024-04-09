@@ -66,6 +66,15 @@ def SVGD_update(x0, lnprob, n_iter=1000, stepsize=1e-3, alpha=1.0, debug=False):
         
         # vanilla update
         theta = theta + stepsize * grad_theta
+
+        if iter % 10 == 0:
+            # plot current set of particles like an animation
+            plt.cla()
+            # plt.plot(x_plot, gaussian(x_plot, 0, 1), color='black', label='Target distribution')
+            plt.scatter(theta, jnp.zeros_like(theta), color='red', label='Particles')
+            plt.legend()
+            plt.title(f'Iteration {iter}')
+            plt.show()
         
     return theta
     
@@ -77,7 +86,7 @@ def test_SVGD():
     
     dlnprob = lambda x: log_gaussian_dx(x, 0, 1)
 
-    theta = SVGD_update(x0, dlnprob, n_iter=10000, stepsize=0.05, debug=True)
+    theta = SVGD_update(x0, dlnprob, n_iter=1000, stepsize=0.05, debug=True)
 
     print(theta)
 
