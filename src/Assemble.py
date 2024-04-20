@@ -12,6 +12,7 @@ def M_fn(u_fn, theta_flat, x):
     U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
     u_dth = U_dtheta(theta_flat, x)
     M = jnp.mean(u_dth[:, :, jnp.newaxis] * u_dth[:, jnp.newaxis, :], axis=0)
+    
     return M
 
 

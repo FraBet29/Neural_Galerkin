@@ -6,6 +6,7 @@ from IPython.display import display, clear_output
 import time
 from Sampler import *
 from Assemble import *
+from Diagnostic import *
 from Utils import *
 
 
@@ -19,7 +20,7 @@ from Utils import *
 #         raise ValueError(f'Unknown solver: {name}.')
 
 
-def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, sampler='uniform', plot_on=True):
+def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, sampler='uniform', diagnostic_on=False, plot_on=True):
 
     # Sample points in the spatial domain
     if sampler == 'uniform':
@@ -42,6 +43,10 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
     
     solution = []
     timesteps = []
+    if diagnostic_on:
+        diagnostic = Diagnostic()
+    else:
+        diagnostic = None
 
     scheme = scipy.integrate.RK45(rhs_rk45, 0, theta_flat, problem_data.T, max_step=problem_data.dt, rtol=1e-4)
 
@@ -51,7 +56,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
 
         print(f'  t = {scheme.t:.5f}')
 
-        # Save current solution
+        # Save current solution and time
         u = U(scheme.y, x_plot.reshape(-1, 1))
         solution.append(u)
         timesteps.append(scheme.t)
@@ -64,13 +69,15 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         else:
             raise ValueError(f'Unknown sample mode: {sampler}.')
         
+        # Compute the conditioning number and the eigenvalues of the M matrix
+        if diagnostic_on:
+            M = M_fn(u_fn, scheme.y, x)
+            diagnostic.cond.append(jnp.linalg.cond(M))
+            diagnostic.max_eig.append(jnp.max(jnp.linalg.eigvals(M)))
+            diagnostic.min_eig.append(jnp.min(jnp.linalg.eigvals(M)))
+        
         # Integration step
         scheme.step()
-        timesteps.append(scheme.t)
-
-        # Save current solution
-        u = U(scheme.y, x_plot)
-        solution.append(u)
 
         if plot_on and it % 10 == 0:
             ref_sol = problem_data.exact_sol(x_plot, scheme.t)
@@ -90,11 +97,11 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             plt.show()
 
         it += 1
-        
-    return solution, timesteps
+
+    return solution, timesteps, diagnostic
 
 
-def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform', scheme='rk45'):
+def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform', scheme='rk45', diagnostic_on=False, plot_on=True):
 
     theta_flat, unravel = jax.flatten_util.ravel_pytree(theta) # flatten a pytree of arrays down to a 1D array
     u_fn = unraveler(net.apply, unravel) # auxiliary function that allows to evaluate the NN starting from the flattened parameters
@@ -102,8 +109,8 @@ def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform',
     print('Run time evolution...')
 
     if scheme == 'rk45':
-        solution, timesteps = runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler)
+        solution, timesteps, diagnostic = runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler, diagnostic_on, plot_on)
     else:
         raise ValueError(f'Unknown scheme: {scheme}.')
 
-    return solution, timesteps
+    return solution, timesteps, diagnostic
