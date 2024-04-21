@@ -54,7 +54,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
 
     while scheme.t < problem_data.T:
 
-        print(f'  t = {scheme.t:.5f}')
+        # print(f'  t = {scheme.t:.5f}')
 
         # Save current solution and time
         u = U(scheme.y, x_plot.reshape(-1, 1))
