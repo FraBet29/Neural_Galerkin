@@ -99,7 +99,7 @@ def init_neural_galerkin(net, problem_data, training_data, theta_init=None):
     plt.show()
 
     # Compute the relative error
-    relative_error = jnp.linalg.norm(u_pred - problem_data.initial_fn(x_plot)) / jnp.linalg.norm(problem_data.initial_fn(x_plot))
+    relative_error = jnp.linalg.norm(u_pred.squeeze() - problem_data.initial_fn(x_plot)) / jnp.linalg.norm(problem_data.initial_fn(x_plot))
     print("Relative error of the initial fit:", relative_error)
 
     return theta_init

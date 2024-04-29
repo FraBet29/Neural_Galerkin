@@ -82,19 +82,26 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         scheme.step()
 
         if plot_on and it % 10 == 0:
-            ref_sol = problem_data.exact_sol(x_plot, scheme.t)
+
             plot1 = plt.scatter(x, - 0.1 * jnp.ones(n), color='blue', marker='.')
-            plot2 = plt.plot(x_plot, ref_sol, '--')
+            if problem_data.exact_sol is not None:
+                ref_sol = problem_data.exact_sol(x_plot, scheme.t)
+                plot2 = plt.plot(x_plot, ref_sol, '--')
             plot3 = plt.plot(x_plot, U(scheme.y, x_plot.reshape(-1, 1)))
             plt.xlim([problem_data.domain[0], problem_data.domain[1]])
-            plt.ylim([jnp.min(ref_sol) - 0.5, jnp.max(ref_sol) + 0.5])
+            if problem_data.exact_sol is not None:
+                plt.ylim([jnp.min(ref_sol) - 0.5, jnp.max(ref_sol) + 0.5])
             display(plot1)
-            display(plot2)
+            if problem_data.exact_sol is not None:
+                display(plot2)
             display(plot3)
             # time.sleep(0.001)
             clear_output(wait=True)
             
-            plt.legend(['particles', 'exact', 'approx'])
+            if problem_data.exact_sol is not None:
+                plt.legend(['particles', 'exact', 'approx'])
+            else:
+                plt.legend(['particles', 'approx'])
             plt.title(f't = {scheme.t:.5f}')
             plt.show()
 

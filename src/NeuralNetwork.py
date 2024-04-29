@@ -81,20 +81,20 @@ class ShallowNetKdVLinear(nn.Module):
         return net(x)
 
 
-class DeepNetKdV(nn.Module):
+# class DeepNetKdV(nn.Module):
 
-    m: int
+#     m: int
 
-    @nn.compact
-    def __call__(self, x):
-        net = nn.Sequential([nn.Dense(features=self.m),
-                             nn.activation.sigmoid,
-                             nn.Dense(features=self.m),
-                             nn.activation.sigmoid,
-                             nn.Dense(features=1, use_bias=False)])
-        if len(x.shape) == 1:
-            return jnp.squeeze(net(x), 0)
-        return net(x)
+#     @nn.compact
+#     def __call__(self, x):
+#         net = nn.Sequential([nn.Dense(features=self.m),
+#                              nn.activation.sigmoid,
+#                              nn.Dense(features=self.m),
+#                              nn.activation.sigmoid,
+#                              nn.Dense(features=1, use_bias=False)])
+#         if len(x.shape) == 1:
+#             return jnp.squeeze(net(x), 0)
+#         return net(x)
 
 
 class PeriodicPhiAC(nn.Module):
@@ -109,16 +109,21 @@ class PeriodicPhiAC(nn.Module):
     def __call__(self, x):
 
         d = x.shape[-1] # input dimension
-        w = self.param('kernel', self.param_init, (self.m, d)) # w.shape = (m, d)
-        b = self.param('bias', self.param_init, (d, )) # b.shape = (d, )
+        # w = self.param('kernel', self.param_init, (self.m, d)) # w.shape = (m, d)
+        # b = self.param('bias', self.param_init, (d, )) # b.shape = (d, )
+
+        a = self.param('a', self.param_init, (self.m, d))
+        b = self.param('b', self.param_init, (self.m, d))
+        c = self.param('c', self.param_init, (self.m, d))
 
         def apply_phi(x):
-            return w * jnp.sin(2 * jnp.pi * (x - b) / self.L)
+            # return w * jnp.sin(2 * jnp.pi * (x - b) / self.L)
+            return jnp.sum(a * jnp.cos((2 * jnp.pi / self.L) * x + b) + c, axis=1)
 
         # Apply phi to each input
         phi = jax.vmap(apply_phi)(x)
 
-        return phi.squeeze()
+        return phi
     
 
 class Rational(nn.Module):
@@ -141,23 +146,17 @@ class Rational(nn.Module):
 class DeepNetAC(nn.Module):
 
     m: int
+    l: int
     L: float
 
     @nn.compact
     def __call__(self, x):
-        net = nn.Sequential([PeriodicPhiAC(self.m, self.L),
-                            # nn.LayerNorm(),
-                            nn.activation.tanh,
-                            # Rational(),
-                            nn.Dense(features=self.m, kernel_init=nn.initializers.truncated_normal(stddev=1.0)),
-                            # nn.LayerNorm(),
-                            nn.activation.tanh,
-                            # Rational(),
-                            nn.Dense(features=self.m, kernel_init=nn.initializers.truncated_normal(stddev=1.0)),
-                            # nn.LayerNorm(),
-                            nn.activation.tanh,
-                            # Rational(),
-                            nn.Dense(features=1, kernel_init=nn.initializers.truncated_normal(stddev=1.0), use_bias=False)])
+        layers = [PeriodicPhiAC(self.m, self.L), nn.activation.tanh]
+        for _ in range(self.l-1):
+            layers.append(nn.Dense(self.m))
+            layers.append(nn.activation.tanh)
+        layers.append(nn.Dense(features=1, use_bias=False))
+        net = nn.Sequential(layers)
         if len(x.shape) == 1:
             return jnp.squeeze(net(x), 0)
         return net(x)
