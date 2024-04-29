@@ -43,16 +43,21 @@ def init_neural_galerkin(net, problem_data, training_data, theta_init=None):
     # dataset = CreateDataset(x_init, u_true)
     # dataloader = DataLoader(dataset, batch_size=n, collate_fn=collate_fn, shuffle=True)
 
-    # Define the optimizer
-    if training_data.scheduler is None:
-        opt = optax.adam(training_data.gamma)
-    else:
-        opt = optax.adam(training_data.scheduler)
-    opt_state = opt.init(theta_init)
-
     # Define the loss function
     mse_loss = loss_fn_wrapper(net, x_init, u_true)
     value_and_grad_fn = jax.value_and_grad(mse_loss)
+
+    # Define the optimizer
+    if training_data.scheduler is None:
+        opt = optax.adam(training_data.gamma)
+        # opt = optax.noisy_sgd(training_data.gamma)
+        # opt = jaxopt.LBFGS(fun=mse_loss) # https://jaxopt.github.io/stable/_autosummary/jaxopt.LBFGS.html#jaxopt.LBFGS
+    else:
+        opt = optax.adam(training_data.scheduler)
+        # opt = optax.noisy_sgd(training_data.scheduler)
+        # opt = jaxopt.LBFGS(fun=mse_loss)
+    opt_state = opt.init(theta_init)
+    # opt_state = opt.init_state(theta_init)
 
     # Define a TrainState
     # state = train_state.TrainState.create(apply_fn=net.apply, tx=opt, params=theta_init['params'])
@@ -66,7 +71,9 @@ def init_neural_galerkin(net, problem_data, training_data, theta_init=None):
     for epoch in range(training_data.epochs):
         loss, grads = value_and_grad_fn(theta_init)
         updates, opt_state = opt.update(grads, opt_state)
+        # updates, opt_state = opt.update(grads, opt_state, theta_init)
         theta_init = optax.apply_updates(theta_init, updates)
+        # theta_init, opt_state = opt.update(grads, opt_state)
         losses.append(loss)
 
         if epoch % 1000 == 0:

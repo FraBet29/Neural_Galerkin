@@ -95,3 +95,69 @@ class DeepNetKdV(nn.Module):
         if len(x.shape) == 1:
             return jnp.squeeze(net(x), 0)
         return net(x)
+
+
+class PeriodicPhiAC(nn.Module):
+
+    m: int
+    L: float
+    param_init: Callable = nn.initializers.truncated_normal(stddev=1.0)
+    # param_init: Callable = nn.initializers.uniform()
+    # param_init: Callable = nn.initializers.constant(1)
+
+    @nn.compact
+    def __call__(self, x):
+
+        d = x.shape[-1] # input dimension
+        w = self.param('kernel', self.param_init, (self.m, d)) # w.shape = (m, d)
+        b = self.param('bias', self.param_init, (d, )) # b.shape = (d, )
+
+        def apply_phi(x):
+            return w * jnp.sin(2 * jnp.pi * (x - b) / self.L)
+
+        # Apply phi to each input
+        phi = jax.vmap(apply_phi)(x)
+
+        return phi.squeeze()
+    
+
+class Rational(nn.Module):
+    """
+    Rational activation function
+    Ref.: Nicolas Boullé, Yuji Nakatsukasa, and Alex Townsend,
+          Rational neural networks,
+          arXiv preprint arXiv:2004.01902 (2020).
+    """
+    alpha_init = lambda *args: jnp.array([1.1915, 1.5957, 0.5, 0.0218])
+    beta_init = lambda *args: jnp.array([2.383, 0.0, 1.0])
+    
+    @nn.compact
+    def __call__(self, x):
+        alpha = self.param('alpha', self.alpha_init)
+        beta = self.param('beta', self.beta_init)
+        return jnp.polyval(alpha, x) / jnp.polyval(beta, x)
+
+
+class DeepNetAC(nn.Module):
+
+    m: int
+    L: float
+
+    @nn.compact
+    def __call__(self, x):
+        net = nn.Sequential([PeriodicPhiAC(self.m, self.L),
+                            # nn.LayerNorm(),
+                            nn.activation.tanh,
+                            # Rational(),
+                            nn.Dense(features=self.m, kernel_init=nn.initializers.truncated_normal(stddev=1.0)),
+                            # nn.LayerNorm(),
+                            nn.activation.tanh,
+                            # Rational(),
+                            nn.Dense(features=self.m, kernel_init=nn.initializers.truncated_normal(stddev=1.0)),
+                            # nn.LayerNorm(),
+                            nn.activation.tanh,
+                            # Rational(),
+                            nn.Dense(features=1, kernel_init=nn.initializers.truncated_normal(stddev=1.0), use_bias=False)])
+        if len(x.shape) == 1:
+            return jnp.squeeze(net(x), 0)
+        return net(x)

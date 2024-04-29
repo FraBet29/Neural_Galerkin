@@ -1,8 +1,10 @@
 import jax
 import jax.numpy as jnp
 from functools import partial
+import scipy
 from scipy.stats import uniform
 from Assemble import *
+from Diagnostic import *
 
 
 # def sampler(sample_mode, *args):
@@ -50,19 +52,35 @@ def SVGD_kernel(z, h):
     return (Kxy, dxkxy)
 
 
-def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0):
+def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_on=False):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
     z = jnp.copy(z0)
 
+    if diagnostic_on:
+        z_old = jnp.copy(z)
+        wass = []
+
     for s in range(steps):
+
         log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
         # Calculating the kernel matrix
         kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
         grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
         # Vanilla update
         z = z + epsilon * grad_z
+
+        if diagnostic_on:
+            wass.append(wasserstein_1d(z_old.squeeze(), z.squeeze(), p=2))
+            z_old = jnp.copy(z)
+    
+    if diagnostic_on:
+        plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(s + 1) + 1))
+        plt.title('Wasserstein distance (cumsum)')
+        plt.xlabel('SVGD iters')
+        plt.ylabel('Wasserstein distance (cumsum)')
+        plt.show()
     
     # print(f'SVGD iterations: {s + 1}')
 
@@ -82,7 +100,7 @@ def predictor_corrector(u_fn, rhs, theta_flat, x, t):
     # return theta_flat_pred
 
 
-def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500):
+def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500, diagnostic_on=False):
     '''
     Adaptive sampling with SVGD.
     Args:
@@ -90,7 +108,6 @@ def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsi
         rhs: source term
         theta_flat: flattened parameters
         problem_data: problem data
-        n: number of points
         x: initial points
         t: current time
         epsilon: step size
@@ -109,6 +126,6 @@ def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsi
     log_mu = lambda y: jnp.log(mu(y)) # log(mu) = - V
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
-    x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha)
+    x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
 
     return x

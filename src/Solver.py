@@ -65,7 +65,8 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         if sampler == 'uniform':
             x = uniform_sampling(problem_data, n, int(scheme.t * 1e6))
         elif sampler == 'svgd':
-            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250)
+            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
+                                  diagnostic_on=diagnostic_on)
         else:
             raise ValueError(f'Unknown sample mode: {sampler}.')
         
@@ -73,8 +74,9 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         if diagnostic_on:
             M = M_fn(u_fn, scheme.y, x)
             diagnostic.cond.append(jnp.linalg.cond(M))
-            diagnostic.max_eig.append(jnp.max(jnp.linalg.eigvals(M)))
-            diagnostic.min_eig.append(jnp.min(jnp.linalg.eigvals(M)))
+            eigs = jnp.linalg.eigvals(M)
+            diagnostic.max_eig.append(jnp.max(eigs))
+            diagnostic.min_eig.append(jnp.min(eigs))
         
         # Integration step
         scheme.step()
@@ -97,6 +99,9 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             plt.show()
 
         it += 1
+
+        if diagnostic_on:
+            diagnostic.eigs_final = eigs
 
     return solution, timesteps, diagnostic
 
