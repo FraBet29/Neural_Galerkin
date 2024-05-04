@@ -4,7 +4,7 @@ from functools import partial
 
 
 # @jax.jit
-@partial(jax.jit, static_argnums=(0,))
+@partial(jax.jit, static_argnums=(0, ))
 def M_fn(u_fn, theta_flat, x):
     '''
     Assemble the M matrix.
@@ -17,7 +17,7 @@ def M_fn(u_fn, theta_flat, x):
 
 
 # @jax.jit
-@partial(jax.jit, static_argnums=(0,1,))
+@partial(jax.jit, static_argnums=(0, 1, ))
 def F_fn(u_fn, rhs, theta_flat, x, t):
     '''
     Assemble the F matrix.
@@ -30,7 +30,7 @@ def F_fn(u_fn, rhs, theta_flat, x, t):
 
 
 # @jax.jit
-@partial(jax.jit, static_argnums=(0,1,))
+@partial(jax.jit, static_argnums=(0, 1, ))
 def r_fn(u_fn, rhs, theta_flat, delta_theta_flat, x, t):
     '''
     Compute the local-in-time residual.
@@ -39,3 +39,12 @@ def r_fn(u_fn, rhs, theta_flat, delta_theta_flat, x, t):
     U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
     r = jnp.dot(U_dtheta(theta_flat, x), delta_theta_flat) - rhs(theta_flat, x, t, u_fn)
     return r.squeeze()
+
+
+@partial(jax.jit, static_argnums=(0, 1, ))
+def r_loss(u_fn, rhs, theta_flat, delta_theta_flat, x, t):
+    '''
+    Compute the square norm of the residual.
+    '''
+    r = r_fn(u_fn, rhs, theta_flat, delta_theta_flat, x, t)
+    return jnp.linalg.norm(r) ** 2

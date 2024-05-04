@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from matplotlib import colormaps
+# from matplotlib import colormaps
 from IPython.display import display, clear_output
 from scipy.interpolate import interp1d
 import time
@@ -19,12 +19,12 @@ def plot_function(fn, problem_data, title='Function'):
 def plot_solution(solution, timesteps, problem_data, title='Solution'):
 	
 	space_time_solution = jnp.array(solution) # (time, space)
-	interpolator = interp1d(timesteps, space_time_solution, axis=0, kind='linear', fill_value="extrapolate")
+	interpolator = interp1d(timesteps, space_time_solution, axis=0, kind='linear', fill_value='extrapolate')
 	t_plot = jnp.linspace(0, problem_data.T, 200)
 	space_time_solution = interpolator(t_plot)
 
 	fig, ax = plt.subplots()
-	plt.imshow(space_time_solution.T, interpolation='nearest', cmap=colormaps['coolwarm'], origin='lower', 
+	plt.imshow(space_time_solution.T, interpolation='nearest', cmap='coolwarm', origin='lower', 
                extent=[0, problem_data.T, problem_data.domain[0], problem_data.domain[1]], aspect='auto')
 	plt.colorbar(label='u')
 	ax.set_xlabel('t')
@@ -37,7 +37,7 @@ def plot_animation(solution, timesteps, problem_data):
 
 	x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N)
 	space_time_solution = jnp.array(solution) # (time, space)
-	interpolator = interp1d(timesteps, space_time_solution, axis=0, kind='linear', fill_value="extrapolate")
+	interpolator = interp1d(timesteps, space_time_solution, axis=0, kind='linear', fill_value='extrapolate')
 	t_plot = jnp.linspace(0, problem_data.T, 200)
 	space_time_solution = interpolator(t_plot)
 
