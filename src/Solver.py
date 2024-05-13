@@ -30,11 +30,19 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         if x_init is None:
             raise ValueError('Initial points must be provided for adaptive sampling.')
         x = x_init
+    elif sampler == 'weighted':
+        x = uniform_sampling(problem_data, n)
+        w_fn = lambda y: jnp.array([1]) # initial weights all equal to 1
     else:
         raise ValueError(f'Unknown sampler: {sampler}.')
     
     def rhs_rk45(t, theta_flat):
-        return jnp.linalg.lstsq(M_fn(u_fn, theta_flat, x), F_fn(u_fn, rhs, theta_flat, x, t))[0]
+        if sampler == 'weighted':
+            M, F = assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn)
+            return jnp.linalg.lstsq(M, F)[0]
+            # return jnp.linalg.lstsq(M_fn_weighted(u_fn, theta_flat, x, w_fn), F_fn_weighted(u_fn, rhs, theta_flat, x, t, w_fn))[0]
+        else:
+            return jnp.linalg.lstsq(M_fn(u_fn, theta_flat, x), F_fn(u_fn, rhs, theta_flat, x, t))[0]
 
     # Points for plotting and error evaluation
     x_plot = jnp.linspace(problem_data.domain[0], problem_data.domain[1], problem_data.N).reshape(-1, 1)
@@ -55,6 +63,11 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
 
     while scheme.t < problem_data.T:
 
+        if sampler == 'weighted':
+            # M = M_fn_weighted(u_fn, scheme.y, x, w_fn)
+            M, _ = assemble_weighted(u_fn, rhs, scheme.y, x, scheme.t, w_fn)
+            print('cond(M) =', jnp.linalg.cond(M))
+
         # print(f'  t = {scheme.t:.5f}')
 
         # Save current solution and time
@@ -68,6 +81,8 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         elif sampler == 'svgd':
             x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
                                   diagnostic_on=diagnostic_on)
+        elif sampler == 'weighted':
+            x, w_fn = weighted_sampling(u_fn, scheme.y, problem_data, x, gamma=0.25, epsilon=0.05, steps=250)
         else:
             raise ValueError(f'Unknown sample mode: {sampler}.')
         
@@ -89,6 +104,8 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
                 ref_sol = problem_data.exact_sol(x_plot, scheme.t)
                 plot2 = plt.plot(x_plot, ref_sol, '--')
             plot3 = plt.plot(x_plot, U(scheme.y, x_plot.reshape(-1, 1)))
+            # delta_theta_flat = predictor_corrector(u_fn, rhs, scheme.y, x, scheme.t)
+            # plot4 = plt.plot(x_plot, jnp.abs(r_fn(u_fn, rhs, scheme.y, delta_theta_flat, x_plot.reshape(-1, 1), scheme.t)))
             plt.xlim([problem_data.domain[0], problem_data.domain[1]])
             if problem_data.exact_sol is not None:
                 plt.ylim([jnp.min(ref_sol) - 0.5, jnp.max(ref_sol) + 0.5])
@@ -96,13 +113,16 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             if problem_data.exact_sol is not None:
                 display(plot2)
             display(plot3)
+            # display(plot4)
             # time.sleep(0.001)
             clear_output(wait=True)
             
             if problem_data.exact_sol is not None:
                 plt.legend(['particles', 'exact', 'approx'])
+                # plt.legend(['particles', 'exact', 'approx', 'residual'])
             else:
                 plt.legend(['particles', 'approx'])
+                # plt.legend(['particles', 'approx', 'residual'])
             plt.title(f't = {scheme.t:.5f}')
             plt.show()
 
@@ -242,6 +262,8 @@ def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform',
 
     print('Run time evolution...')
 
+    start = time.time()
+
     if scheme == 'rk45':
         solution, timesteps, diagnostic = runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler, diagnostic_on, plot_on)
     elif scheme == 'bwe':
@@ -249,5 +271,7 @@ def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform',
         raise NotImplementedError('Backward Euler scheme is not implemented yet.')
     else:
         raise ValueError(f'Unknown scheme: {scheme}.')
+    
+    print(f'Elapsed time: {time.time() - start:.3f} s')
 
     return solution, timesteps, diagnostic
