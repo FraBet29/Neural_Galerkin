@@ -68,6 +68,12 @@ def SVGD_update(x0, lnprob, n_iter=1000, stepsize=1e-3, alpha=1.0, debug=False):
         lnpgrad = lnprob(theta.squeeze()).reshape(-1, 1) # lnpgrad: (n, d)
         # calculating the kernel matrix
         kxy, dxkxy = SVGD_kernel(theta, h=0.05) # kxy: (n, n), dxkxy: (n, d)
+
+        # Print some info about the kernel
+        print('det', jnp.linalg.det(kxy))
+        print('min eig', jnp.min(jnp.linalg.eigvals(kxy)))
+        print('max eig', jnp.max(jnp.linalg.eigvals(kxy)))
+
         grad_theta = alpha * (jnp.matmul(kxy, lnpgrad) + dxkxy) / x0.shape[0] # grad_theta: (n, d)
         
         # vanilla update

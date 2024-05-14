@@ -26,7 +26,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
     # Sample points in the spatial domain
     if sampler == 'uniform':
         x = uniform_sampling(problem_data, n)
-    elif sampler == 'svgd':
+    elif sampler == 'svgd' or sampler == 'svgd_corrected':
         if x_init is None:
             raise ValueError('Initial points must be provided for adaptive sampling.')
         x = x_init
@@ -81,6 +81,9 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         elif sampler == 'svgd':
             x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
                                   diagnostic_on=diagnostic_on)
+        elif sampler == 'svgd_corrected':
+            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
+                                  corrected=True, diagnostic_on=diagnostic_on)
         elif sampler == 'weighted':
             x, w_fn = weighted_sampling(u_fn, scheme.y, problem_data, x, gamma=0.25, epsilon=0.05, steps=250)
         else:

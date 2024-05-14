@@ -91,12 +91,21 @@ def assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn):
     u_dth = U_dtheta(theta_flat, x)
     u_dth_proj = U_dtheta(theta_flat, x)
     M_proj = jnp.mean(u_dth_proj[:, :, jnp.newaxis] * u_dth_proj[:, jnp.newaxis, :], axis=0) # {M_proj}_ij = <u_dth_i, u_dth_j>
+    
+    # A set of vectors is linearly independent iff the determinant of the Gram matrix is non-zero
+    # print(jnp.linalg.det(M_proj)) # always zero!
+    subspace_dim = jnp.linalg.matrix_rank(M_proj)
+    # print('Gram rank:', subspace_dim)
+    
     u_dth_ort = orthogonalize(u_dth, M_proj)
+    # u_dth_ort = u_dth_ort[:, :subspace_dim] # truncate the orthogonal basis to the rank of the Gram matrix
 
     M = jnp.mean(w_fn(x)[:, jnp.newaxis, jnp.newaxis] * (u_dth_ort[:, :, jnp.newaxis] * u_dth_ort[:, jnp.newaxis, :]), axis=0)
+    # M = jnp.mean((w_fn(x) ** 2)[:, jnp.newaxis, jnp.newaxis] * (u_dth_ort[:, :, jnp.newaxis] * u_dth_ort[:, jnp.newaxis, :]), axis=0)
 
     f = rhs(theta_flat, x, t, u_fn) # source term
     F = jnp.mean(w_fn(x)[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
+    # F = jnp.mean((w_fn(x) ** 2)[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
 
     return M, F
 

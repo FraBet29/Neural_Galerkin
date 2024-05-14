@@ -59,96 +59,163 @@ def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_o
 
     ### NEW VERSION ###
 
-    def body_fn(i, z):
-        log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1)
-        kxy, dxkxy = SVGD_kernel(z, h=0.05)
-        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0]
-        z = z + epsilon * grad_z
-        return z
-
-    z = jax.lax.fori_loop(0, steps, body_fn, z0)
-
-    return z
-
-    ### OLD VERSION ###
-
-    # z = jnp.copy(z0)
-
-    # if diagnostic_on:
-    #     z_old = jnp.copy(z)
-    #     wass = []
-
-    # for s in range(steps):
-
-    #     log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
-    #     # Calculating the kernel matrix
-    #     kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
-    #     grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
-    #     # Vanilla update
+    # def body_fn(i, z):
+    #     log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1)
+    #     kxy, dxkxy = SVGD_kernel(z, h=0.05)
+    #     grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0]
     #     z = z + epsilon * grad_z
+    #     return z
 
-    #     if diagnostic_on:
-    #         wass.append(wasserstein_1d(z_old.squeeze(), z.squeeze(), p=2))
-    #         z_old = jnp.copy(z)
-    
-    # if diagnostic_on:
-    #     plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(s + 1) + 1))
-    #     plt.title('Wasserstein distance (cumsum)')
-    #     plt.xlabel('SVGD iters')
-    #     plt.ylabel('Wasserstein distance (cumsum)')
-    #     plt.show()
-    
-    # # print(f'SVGD iterations: {s + 1}')
+    # z = jax.lax.fori_loop(0, steps, body_fn, z0)
 
     # return z
 
+    ### OLD VERSION ###
 
-@jax.jit
-def K(x, h=0.05):
-    xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
-    norm = jnp.einsum('ijk,ijk->ij', xmx, xmx)
-    Kval = jnp.exp(- norm / h ** 2 / 2)
-    gKval = jnp.expand_dims(Kval, -1) * (xmx / h ** 2)
-    return (Kval, gKval)
+    z = jnp.copy(z0)
 
+    if diagnostic_on:
+        z_old = jnp.copy(z)
+        wass = []
 
-def svgd(x0, g_logp, T=1000, eta=1e-3, alpha=1.0):
+    for s in range(steps):
 
-    @jax.jit
-    def update_svgd(x):
-        Kval, gKval = K(x)
-        return alpha * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) / x0.shape[0]
+        log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
+        # Calculating the kernel matrix
+        kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
+        
+        # # Print some info about the kernel
+        # print('det', jnp.linalg.det(kxy))
+        # print('min eig', jnp.min(jnp.linalg.eigvals(kxy)))
+        # print('max eig', jnp.max(jnp.linalg.eigvals(kxy)))
+        
+        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
+        # Vanilla update
+        z = z + epsilon * grad_z
+
+        if diagnostic_on:
+            wass.append(wasserstein_1d(z_old.squeeze(), z.squeeze(), p=2))
+            z_old = jnp.copy(z)
     
-    def body_fn(i, x):
-        return x + eta * update_svgd(x) 
-
-    x = jax.lax.fori_loop(0, T, body_fn, x0)
-
-    return x
-
-
-def svgd_unbiased(x0, g_logp, T=1000, eta=1e-3, key=jax.random.PRNGKey(0)):
-
-    N, d = x0.shape
-
-    @jax.jit
-    def update_svgd(x, key):
-        Kval, gKval = K(x)
-        # U, D, V = jnp.linalg.svd(Kval)
-        # return (eta * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) + (U @ jnp.diag(jnp.sqrt(2 * eta * D)) @ V) @ jax.random.normal(key, (N, d)), 
-        #        jax.random.split(key)[0])
-        L = jnp.linalg.cholesky(2 * eta * Kval + 1e-6 * jnp.eye(N)) # correction needed for numerical stability
-        return (eta * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) + L @ jax.random.normal(key, (N, d)), 
-                jax.random.split(key)[0])
+    if diagnostic_on:
+        plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(s + 1) + 1))
+        plt.title('Wasserstein distance (cumsum)')
+        plt.xlabel('SVGD iters')
+        plt.ylabel('Wasserstein distance (cumsum)')
+        plt.show()
     
-    def body_fn(i, state):
-        x, key = state
-        x, key = update_svgd(x, key)
-        return (x, key)
+    # print(f'SVGD iterations: {s + 1}')
+
+    return z
+
+
+def SVGD_update_unbiased(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_on=False):
+    '''
+    Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
+    '''
+
+    ### NEW VERSION ###
+
+    # N, d = z0.shape
+
+    # def body_fn(i, state):
+    #     z, key = state
+    #     log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1)
+    #     kxy, dxkxy = SVGD_kernel(z, h=0.05)
+    #     grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0]
+    #     # L = jnp.linalg.cholesky(2 * epsilon * kxy + 1e-3 * jnp.eye(N)) # correction needed for numerical stability
+    #     # z = z + epsilon * grad_z + L @ jax.random.normal(key, (N, d))
+    #     L = jnp.linalg.cholesky(kxy + 1e-6 * jnp.eye(N)) # correction needed for numerical stability
+    #     z = z + epsilon * grad_z + jnp.sqrt(2 * epsilon / z0.shape[0]) * L @ jax.random.normal(key, (N, d))
+    #     return (z, jax.random.split(key)[0])
+
+    # z, _ = jax.lax.fori_loop(0, steps, body_fn, (z0, jax.random.PRNGKey(0)))
+
+    # return z
+
+    ### OLD VERSION ###
+
+    N, d = z0.shape
+    key = jax.random.PRNGKey(0)
+
+    z = jnp.copy(z0)
+
+    if diagnostic_on:
+        z_old = jnp.copy(z)
+        wass = []
+
+    for s in range(steps):
+
+        log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
+        # Calculating the kernel matrix
+        kxy, dxkxy = SVGD_kernel(z, h=0.05) # kxy: (n, n), dxkxy: (n, d)
+        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0]
+        # print('Min eig of kxy (corrected):', jnp.min(jnp.linalg.eigvals(kxy + 1e-3 * jnp.eye(N))))
+        # L = jnp.linalg.cholesky(kxy + 1e-3 * jnp.eye(N)) # correction needed for numerical stability
+        # z = z + epsilon * grad_z + jnp.sqrt(2 * epsilon / z0.shape[0]) * L @ jax.random.normal(key, (N, d))
+        U, S, _ = jnp.linalg.svd(kxy)
+        z = z + epsilon * grad_z + jnp.sqrt(2 * epsilon / z0.shape[0]) * U @ jnp.diag(jnp.sqrt(S)) @ jax.random.normal(key, (N, d))
+
+        if diagnostic_on:
+            wass.append(wasserstein_1d(z_old.squeeze(), z.squeeze(), p=2))
+            z_old = jnp.copy(z)
     
-    x, _ = jax.lax.fori_loop(0, T, body_fn, (x0, key))
+    if diagnostic_on:
+        plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(s + 1) + 1))
+        plt.title('Wasserstein distance (cumsum)')
+        plt.xlabel('SVGD iters')
+        plt.ylabel('Wasserstein distance (cumsum)')
+        plt.show()
+
+    return z
+
+
+# @jax.jit
+# def K(x, h=0.05):
+#     xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
+#     norm = jnp.einsum('ijk,ijk->ij', xmx, xmx)
+#     Kval = jnp.exp(- norm / h ** 2 / 2)
+#     gKval = jnp.expand_dims(Kval, -1) * (xmx / h ** 2)
+#     return (Kval, gKval)
+
+
+# def svgd(x0, g_logp, T=1000, eta=1e-3, alpha=1.0):
+
+#     @jax.jit
+#     def update_svgd(x):
+#         Kval, gKval = K(x)
+#         return alpha * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) / x0.shape[0]
     
-    return x
+#     def body_fn(i, x):
+#         return x + eta * update_svgd(x) 
+
+#     x = jax.lax.fori_loop(0, T, body_fn, x0)
+
+#     return x
+
+
+# def svgd_unbiased(x0, g_logp, T=1000, eta=1e-3, alpha=1.0, key=jax.random.PRNGKey(0)):
+
+#     N, d = x0.shape
+
+#     @jax.jit
+#     def update_svgd(x, key):
+#         Kval, gKval = K(x)
+#         # U, D, V = jnp.linalg.svd(Kval)
+#         # return (eta * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) + (U @ jnp.diag(jnp.sqrt(2 * eta * D)) @ V) @ jax.random.normal(key, (N, d)), 
+#         #        jax.random.split(key)[0])
+#         L = jnp.linalg.cholesky(2 * eta * Kval + 1e-6 * jnp.eye(N)) # correction needed for numerical stability
+#         return (eta * alpha * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) / x0.shape[0] + L @ jax.random.normal(key, (N, d)), 
+#                 jax.random.split(key)[0])
+    
+#     def body_fn(i, state):
+#         x, key = state
+#         x, key = update_svgd(x, key)
+#         return (x, key)
+    
+#     x, _ = jax.lax.fori_loop(0, T, body_fn, (x0, key))
+    
+#     return x
 
 
 # NOTE: need to compute theta_flat or delta_theta_flat?
@@ -164,7 +231,7 @@ def predictor_corrector(u_fn, rhs, theta_flat, x, t):
     # return theta_flat_pred
 
 
-def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500, diagnostic_on=False):
+def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500, corrected=False, diagnostic_on=False):
     '''
     Adaptive sampling with SVGD.
     Args:
@@ -193,7 +260,10 @@ def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsi
     log_mu = lambda y: jnp.log(mu(y)) # log(mu) = - V
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
-    x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
+    if corrected:
+        x = SVGD_update_unbiased(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
+    else:
+        x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
     # x = svgd(x, log_mu_dx, T=steps, eta=epsilon)
     # x = svgd_unbiased(x, log_mu_dx, T=steps, eta=epsilon)
 
@@ -315,5 +385,8 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, gamma=1.0, epsilon=0.01
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
     x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha)
+
+    # Constrain the particles in the spatial domain
+    x = jnp.clip(x, problem_data.domain[0], problem_data.domain[1])
 
     return x, w_fn
