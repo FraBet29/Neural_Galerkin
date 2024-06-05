@@ -15,7 +15,7 @@ if __name__ == '__main__':
 	'''
 	n = 100 # number of particles
 	n_iter = 1000 # number of iterations
-	stepsize = 0.01 # stepsize
+	stepsize = 0.05 # stepsize
 
 	# set numpy random seed
 	np.random.seed(123)
@@ -59,8 +59,10 @@ if __name__ == '__main__':
 
 	# gauss_mean = 2
 	# theta, theta_hist, wass_hist = first_demo(gauss_mean)
+	
 	# gauss_mean = 5
 	# theta, theta_hist, wass_hist = second_demo(gauss_mean)
+	
 	base = lambda x, s: np.abs(np.sin(5 * x - s) * np.cos(0.5 * x - s))
 	prob = lambda x, s1, s2: 0.7 * base(x, s1) * (x > s1 - np.pi) * (x < s1 + np.pi) + 0.3 * base(x, s2) * (x > s2 - np.pi) * (x < s2 + np.pi)
 	s1, s2 = 0, 2 * np.pi
@@ -78,11 +80,19 @@ if __name__ == '__main__':
 	plt.legend()
 	plt.show()
 
-	# plot wassestein distance
+	# plot wasserstein distance (cumsum)
 	plt.plot(np.cumsum(np.array(wass_hist)) / np.arange(1, n_iter + 1))
 	# plt.plot(wass_hist)
 	plt.xlabel('Iteration')
-	plt.ylabel('Wasserstein Distance')
+	plt.ylabel('Wasserstein Distance (cumsum)')
+	plt.show()
+
+	# plot wasserstein distance (movmean)
+	def movmean(x, w):
+		return np.convolve(x, np.ones(w), 'valid') / w
+	plt.plot(movmean(np.array(wass_hist), 100))
+	plt.xlabel('Iteration')
+	plt.ylabel('Wasserstein Distance (movmean)')
 	plt.show()
 
 	# print particles evolution

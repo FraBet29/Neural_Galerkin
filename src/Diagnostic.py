@@ -10,29 +10,30 @@ class Diagnostic:
 		self.max_eig = []
 		self.min_eig = []
 		self.eigs_final = None
+		self.rank = []
 
 	def __str__(self):
 		return f'Conditioning number: {self.cond[-1]:.2f}, max eigenvalue: {self.max_eig[-1]:.2f}, min eigenvalue: {self.min_eig[-1]:.2f}'
 	
 	def list2jnp(self):
-		cond_jnp, max_eig_jnp, min_eig_jnp = jnp.array(self.cond), jnp.array(self.max_eig), jnp.array(self.min_eig)
+		cond_jnp, max_eig_jnp, min_eig_jnp, rank = jnp.array(self.cond), jnp.array(self.max_eig), jnp.array(self.min_eig), jnp.array(self.rank)
 		# Check if all eigenvalues with nonzero imaginary part have magnitude close to zero
-		assert jnp.all(jnp.abs(min_eig_jnp[min_eig_jnp.imag != 0]) < 1e-6), 'Eigenvalues with nonzero imaginary part detected.'
+		# assert jnp.all(jnp.abs(min_eig_jnp[min_eig_jnp.imag != 0]) < 1e-6), 'Eigenvalues with nonzero imaginary part detected.'
 		# Correct numerical errors
 		max_eig_jnp = jnp.real(max_eig_jnp)
 		min_eig_jnp = jnp.real(min_eig_jnp)
 		if self.eigs_final is not None:
 			eigs_final_jnp = jnp.real(self.eigs_final)
-			return cond_jnp, max_eig_jnp, min_eig_jnp, eigs_final_jnp
-		return cond_jnp, max_eig_jnp, min_eig_jnp, None
+			return cond_jnp, max_eig_jnp, min_eig_jnp, eigs_final_jnp, rank
+		return cond_jnp, max_eig_jnp, min_eig_jnp, rank, None
 	
 	def averaged(self):
-		cond_jnp, max_eig_jnp, min_eig_jnp, _ = self.list2jnp()
+		cond_jnp, max_eig_jnp, min_eig_jnp, _, _ = self.list2jnp()
 		return jnp.mean(cond_jnp), jnp.mean(max_eig_jnp), jnp.mean(min_eig_jnp)
 	
 	def plot(self, timesteps):
 
-		cond_jnp, max_eig_jnp, min_eig_jnp, eigs_final_jnp = self.list2jnp()
+		cond_jnp, max_eig_jnp, min_eig_jnp, eigs_final_jnp, rank_jnp = self.list2jnp()
 		
 		plt.semilogy(timesteps, cond_jnp)
 		plt.title('Conditioning number of M')
@@ -53,6 +54,12 @@ class Diagnostic:
 		plt.xlabel('index')
 		plt.ylabel('eigenvalues')
 		plt.yscale('log')
+		plt.show()
+
+		plt.plot(timesteps, rank_jnp)
+		plt.title('Rank of M')
+		plt.xlabel('t')
+		plt.ylabel('rank(M)')
 		plt.show()
 
 

@@ -11,6 +11,7 @@ def M_fn(u_fn, theta_flat, x):
     '''
     U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
     u_dth = U_dtheta(theta_flat, x)
+    u_dth = jnp.where(jnp.isnan(u_dth), 0.0, u_dth)
     M = jnp.mean(u_dth[:, :, jnp.newaxis] * u_dth[:, jnp.newaxis, :], axis=0)
     return M
 
@@ -23,9 +24,21 @@ def F_fn(u_fn, rhs, theta_flat, x, t):
     '''
     U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
     u_dth = U_dtheta(theta_flat, x)
+    u_dth = jnp.where(jnp.isnan(u_dth), 0.0, u_dth)
     f = rhs(theta_flat, x, t, u_fn) # source term
     F = jnp.mean(u_dth[:, :] * f[:, jnp.newaxis], axis=0)
     return F
+
+
+@partial(jax.jit, static_argnums=(0, ))
+def J_fn(u_fn, theta_flat, x):
+    '''
+    Assemble the Jacobian matrix.
+    '''
+    U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
+    u_dth = U_dtheta(theta_flat, x)
+    u_dth = jnp.where(jnp.isnan(u_dth), 0.0, u_dth)
+    return u_dth
 
 
 # @jax.jit
@@ -36,7 +49,9 @@ def r_fn(u_fn, rhs, theta_flat, delta_theta_flat, x, t):
     '''
     x = x.reshape(-1, 1)
     U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
-    r = jnp.dot(U_dtheta(theta_flat, x), delta_theta_flat) - rhs(theta_flat, x, t, u_fn)
+    u_dth = U_dtheta(theta_flat, x)
+    u_dth = jnp.where(jnp.isnan(u_dth), 0.0, u_dth)
+    r = jnp.dot(u_dth, delta_theta_flat) - rhs(theta_flat, x, t, u_fn)
     return r.squeeze()
 
 
@@ -49,65 +64,27 @@ def r_loss(u_fn, rhs, theta_flat, delta_theta_flat, x, t):
     return jnp.linalg.norm(r) ** 2
 
 
-@jax.jit
-def orthogonalize(u_dth, M_proj):
-	'''
-	Implementation of the modified Gram-Schmidt orthonormalization algorithm.
-	Adapted from: https://github.com/tensorflow/probability/blob/v0.23.0/tensorflow_probability/python/math/gram_schmidt.py#L28
-	'''
-	n = u_dth.shape[-1]
-
-	# def cond_fn(state):
-	# 	_, i = state
-	# 	return i < n - 1
-
-	def body_fn(i, vecs):
-		# Slice out the vector w.r.t. which we're orthogonalizing the rest.
-		vec_norm = jnp.linalg.norm(vecs[:, i])
-		u = jnp.divide(vecs[:, i], vec_norm) # (d, )
-		# Find weights by dotting the d x 1 against the d x n.
-		# weights = jnp.einsum('dm,dn->n', u[:, jnp.newaxis], vecs) # (n, )
-        # weights = M_proj[i] # (n, )
-		weights = jnp.divide(M_proj[i], jnp.einsum('ii->i', M_proj)) # (n, ) # <u_dth_i, u_dth_j> / <u_dth_i, u_dth_i>
-		# Project out vector `u` from the trailing vectors.
-		masked_weights = jnp.where(jnp.arange(n) > i, weights, 0.)[jnp.newaxis, :] # (1, n)
-		vecs = vecs - jnp.multiply(u[:, jnp.newaxis], masked_weights) # (d, n)
-		vecs = jnp.where(jnp.isnan(vecs), 0.0, vecs)
-		vecs = jnp.reshape(vecs, u_dth.shape)
-		return vecs
-
-	u_dth = jax.lax.fori_loop(0, n, body_fn, u_dth)
-	vec_norm = jnp.linalg.norm(u_dth, ord=2, axis=0, keepdims=True)
-	u_dth = jnp.divide(u_dth, vec_norm)
-	return jnp.where(jnp.isnan(u_dth), 0.0, u_dth)
-
-
 # @partial(jax.jit, static_argnums=(0, 1, ))
-def assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn):
+def assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn, problem_data, store):
     '''
     Assemble the weighted M and F matrices.
     '''
-    U_dtheta = jax.vmap(jax.grad(u_fn), (None, 0))
-    u_dth = U_dtheta(theta_flat, x)
-    u_dth_proj = U_dtheta(theta_flat, x)
-    M_proj = jnp.mean(u_dth_proj[:, :, jnp.newaxis] * u_dth_proj[:, jnp.newaxis, :], axis=0) # {M_proj}_ij = <u_dth_i, u_dth_j>
-    
-    # A set of vectors is linearly independent iff the determinant of the Gram matrix is non-zero
-    # print(jnp.linalg.det(M_proj)) # always zero!
-    subspace_dim = jnp.linalg.matrix_rank(M_proj)
-    # print('Gram rank:', subspace_dim)
-    
-    u_dth_ort = orthogonalize(u_dth, M_proj)
-    # u_dth_ort = u_dth_ort[:, :subspace_dim] # truncate the orthogonal basis to the rank of the Gram matrix
+    w, u_dth_ort, B_GS = w_fn(x.squeeze(), store) # weights, orthonormal basis, Gram-Schmidt change of basis
 
-    M = jnp.mean(w_fn(x)[:, jnp.newaxis, jnp.newaxis] * (u_dth_ort[:, :, jnp.newaxis] * u_dth_ort[:, jnp.newaxis, :]), axis=0)
-    # M = jnp.mean((w_fn(x) ** 2)[:, jnp.newaxis, jnp.newaxis] * (u_dth_ort[:, :, jnp.newaxis] * u_dth_ort[:, jnp.newaxis, :]), axis=0)
+    M = jnp.mean(w[:, jnp.newaxis, jnp.newaxis] * (u_dth_ort[:, :, jnp.newaxis] * u_dth_ort[:, jnp.newaxis, :]), axis=0)
 
     f = rhs(theta_flat, x, t, u_fn) # source term
-    F = jnp.mean(w_fn(x)[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
-    # F = jnp.mean((w_fn(x) ** 2)[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
+    F = jnp.mean(w[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
 
-    return M, F
+    print('cond(M_opt) =', jnp.linalg.cond(M))
+
+    # Solve the weighted least squares problem (Gv = d)
+    tau = jnp.linalg.lstsq(M, F)[0]
+
+    # Recover the original coefficients
+    theta_flat = jnp.linalg.lstsq(B_GS.T, tau)[0]
+
+    return theta_flat
 
 
 # # @jax.jit

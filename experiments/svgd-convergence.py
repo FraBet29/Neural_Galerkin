@@ -24,21 +24,16 @@ def SVGD_kernel(z, h=0.05):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
-    # sq_dist = pdist(theta)
-    # pairwise_dists = squareform(sq_dist) ** 2
     z_norm_squared = jnp.sum(z ** 2, axis=1, keepdims=True)
     pairwise_dists = z_norm_squared + z_norm_squared.T - 2 * jnp.dot(z, z.T)
     # if h < 0: # median trick
     #     h = jnp.median(pairwise_dists)  
     #     h = jnp.sqrt(0.5 * h / jnp.log(theta.shape[0] + 1))
 
-    # compute the rbf kernel
-    Kxy = jnp.exp(- pairwise_dists / h ** 2 / 2)
+    Kxy = jnp.exp(- pairwise_dists / h ** 2 / 2) # RBF kernel
 
     dxkxy = - jnp.matmul(Kxy, z)
     sumkxy = jnp.sum(Kxy, axis=1)
-    # for i in range(z.shape[1]):
-    #     dxkxy = dxkxy.at[:, i].set(dxkxy[:, i] + jnp.multiply(z[:, i], sumkxy))
     dxkxy += jnp.multiply(z, jnp.expand_dims(sumkxy, axis=1)) # vectorized
     dxkxy /= (h ** 2)
     return (Kxy, dxkxy)
@@ -58,69 +53,57 @@ def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0):
         # Vanilla update
         z = z + epsilon * grad_z
 
-        # if s % 10 == 0:
-        # # plot current set of particles like an animation
-        #     plt.cla()
-        #     # plt.plot(x_plot, gaussian(x_plot, 0, 1), color='black', label='Target distribution')
-        #     plt.scatter(z, jnp.zeros_like(z), color='red', label='Particles')
-        #     plt.legend()
-        #     plt.title(f'Iteration {s}')
-        #     plt.show()
-    
-    # print(f'SVGD iterations: {s + 1}')
-
     return z
 
 
 #####################################################################################################
 
-def K(x, h=0.05):
-    xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
-    norm = jnp.einsum('ijk,ijk->ij', xmx, xmx)
-    return jnp.exp(-(norm) / h)
+# def K(x, h=0.05):
+#     xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
+#     norm = jnp.einsum('ijk,ijk->ij', xmx, xmx)
+#     return jnp.exp(-(norm) / h)
 
 
-def g_K(x, h=0.05):
-    # we avoid calling autograd since the function is non-scalar, for better efficiency
-    xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
-    return jnp.expand_dims(K(x), -1) * (2.*xmx/h)
+# def g_K(x, h=0.05):
+#     # we avoid calling autograd since the function is non-scalar, for better efficiency
+#     xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
+#     return jnp.expand_dims(K(x), -1) * (2.*xmx/h)
 
 
-def logp(x):
-    # Standard Gaussian target
-    return -jnp.sum(x**2)
+# def logp(x):
+#     # Standard Gaussian target
+#     return -jnp.sum(x**2)
 
 
-def svgd(x0, logp, T=100, eta=0.01, alpha=1.0):
+# def svgd(x0, logp, T=100, eta=0.01, alpha=1.0):
     
-    x = x0
-    g_logp = jax.grad(logp)
+#     x = x0
+#     g_logp = jax.grad(logp)
 
-    update_svgd = jax.jit(lambda x: alpha * (K(x) @ g_logp(x) + g_K(x).sum(0))) 
+#     update_svgd = jax.jit(lambda x: alpha * (K(x) @ g_logp(x) + g_K(x).sum(0))) 
 
-    for i in range(T):
-        x = x + eta * update_svgd(x)   
-    return x
+#     for i in range(T):
+#         x = x + eta * update_svgd(x)   
+#     return x
 
 
-def sgldr(x0, logp, T=100, eta=0.01, alpha=1.0, key=jax.random.PRNGKey(0)):
+# def sgldr(x0, logp, T=100, eta=0.01, alpha=1.0, key=jax.random.PRNGKey(0)):
     
-    N, d = x0.shape
-    x = x0
-    g_logp = jax.grad(logp)
-    xs = []
+#     N, d = x0.shape
+#     x = x0
+#     g_logp = jax.grad(logp)
+#     xs = []
 
-    update_sgldr = jax.jit(lambda x, key: (eta * alpha * (K(x) @ g_logp(x) + g_K(x).sum(0)) + \
-                                          jnp.linalg.cholesky(2 * eta * K(x)) @ jax.random.normal(key, (N, d)), jax.random.split(key)[0]))
+#     update_sgldr = jax.jit(lambda x, key: (eta * alpha * (K(x) @ g_logp(x) + g_K(x).sum(0)) + \
+#                                           jnp.linalg.cholesky(2 * eta * K(x)) @ jax.random.normal(key, (N, d)), jax.random.split(key)[0]))
 
-    for i in range(T):
-        x_upd, key = update_sgldr(x, key)
-        x = x + x_upd
-        xs.append(x)
-    return x, xs
+#     for i in range(T):
+#         x_upd, key = update_sgldr(x, key)
+#         x = x + x_upd
+#         xs.append(x)
+#     return x, xs
 
 #####################################################################################################
-
 
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.kstest.html
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.goodness_of_fit.html
