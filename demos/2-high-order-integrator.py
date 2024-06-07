@@ -38,7 +38,6 @@ def high_order_runge_kutta(x, alpha=1.0, h=1e-1, T=100):
 	x_list = []
 	
 	sigma = jnp.sqrt(2 * alpha)
-	# sigma = 0.
 	V_tilde = lambda x: alpha * V_dx(x, 0, 1)
 	# V_tilde = lambda x: alpha * V_dx_mix(x, 3, 1, 0.3, 0.7)
 	# V_tilde = lambda x: alpha * V_dx_mix(x, 2, 1, 1/3, 2/3)
@@ -104,10 +103,11 @@ def high_order_runge_kutta(x, alpha=1.0, h=1e-1, T=100):
 
 def main():
 	
-	T = 10 ** 5 # time steps
-	h = 0.05 # discretization step
+	T = 10 ** 4 # time steps
+	h = 0.1 # discretization step
 	N = 10 # number of samples
-	x0 = jax.random.normal(jax.random.key(0), (N,)) - 5
+	# x0 = jax.random.normal(jax.random.key(0), (N,)) - 5
+	x0 = jnp.zeros(N)
 	alpha = 1.0 # noise
 
 	x, x_list = high_order_runge_kutta(x0, alpha=alpha, h=h, T=T)
@@ -153,27 +153,16 @@ def main():
 	err = jnp.abs(emp_var - var)
 	print(err)
 
+	# Compute error for the first moment
+	emp_mean = jnp.zeros(N)
+	for x in x_list:
+		emp_mean = emp_mean + x
+	emp_mean = emp_mean / T
+	mean = 0 # true mean
+	err = jnp.abs(emp_mean - mean)
+	print(err)
+
 
 if __name__ == '__main__':
 	
-	# main()
-
-	# errors with T = 10 ** 4, N = 10, alpha = 1.0
-	# h_list = [0.1, 0.05, 0.01, 0.005, 0.001]
-	h_list = [0.01, 0.005, 0.001]
-	err_list = [# [0.9861115, 1.0164509, 0.9808866, 0.9869323, 1.0362918, 0.9489559, 0.9744103, 0.9244987, 1.0369699, 1.114398], 
-			    # [0.96709096, 1.0113299, 0.9619309, 0.9813943, 1.0232048, 0.94685733, 0.9569106, 0.8621044, 1.0410488, 1.127923],
-				[0.8308338, 1.1084373, 0.7893499, 0.8601471, 0.88126695, 0.8923478, 0.8615931, 0.71657264, 1.0474823, 1.0612404],
-				[0.69925225, 1.1061159, 0.62426627, 0.5837655, 0.66736424, 0.7740886, 0.7242285, 0.5408536, 1.0135692, 1.0319662],
-				[0.08894038, 0.3252424, 0.60443544, 1.2770636, 0.73688865, 0.19273365, 0.86919665, 1.9584563, 0.38813746, 0.5059371]]
-	avg_err_list = [sum(errs) for errs in err_list]
-	plt.loglog(h_list, avg_err_list, label='err')
-	plt.loglog(h_list, [(h / h_list[0]) ** 2 for h in h_list], label='h^2')
-	plt.legend()
-	plt.show()
-
-	# errors with T = 10 ** 5, N = 10, alpha = 1.0
-	# h_list = [0.1, 0.05, 0.01, 0.005, 0.001]
-	# err_list = [[0.99871755, 1.0115829, 1.0169812, 0.99996805, 1.0067, 1.006047, 1.0120919, 1.0181426, 1.0342175, 1.019784],
-	# 			[0.98490894, 1.0111477, 1.0058509, 0.9743525, 0.99824893, 0.99832463, 1.0095174, 1.0072367, 1.0334196, 1.0066224]
-	# 			]
+	main()

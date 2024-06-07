@@ -360,14 +360,14 @@ if __name__ == '__main__':
 	p = 10 # number of basis functions
 	n = 1000 # number of sample points
 
-	results = Results(p)
+	# results = Results(p)
 
-	for i in range(10):
-		print(f'Running experiment {i + 1}...')
-		v, v_recovered, v_opt, cond_M, cond_G, cond_G_opt, cond_B_GS, error, error_recovered, error_opt = main(p, n, seed=int(i * 1e3))
-		results.update(v, v_recovered, v_opt, cond_M, cond_G, cond_G_opt, cond_B_GS, error, error_recovered, error_opt)
+	# for i in range(10):
+	# 	print(f'Running experiment {i + 1}...')
+	# 	v, v_recovered, v_opt, cond_M, cond_G, cond_G_opt, cond_B_GS, error, error_recovered, error_opt = main(p, n, seed=int(i * 1e3))
+	# 	results.update(v, v_recovered, v_opt, cond_M, cond_G, cond_G_opt, cond_B_GS, error, error_recovered, error_opt)
 
-	results(show_solution=False)
+	# results(show_solution=False)
 
 	# RESULTS with p = 5, n = 100
 
@@ -401,8 +401,10 @@ if __name__ == '__main__':
 	]
 
 	print('p = 5, n = 100')
+	print('Mean cond(M): ', jnp.mean(jnp.array(cond_M)))
+	print('Mean cond(G_opt): ', jnp.mean(jnp.array(cond_G_opt)))
+	print('Mean cond(B_GS): ', jnp.mean(jnp.array(cond_B_GS)))
 	print('Mean error:', jnp.mean(jnp.array(error)))
-	print('Mean error (recovered):', jnp.mean(jnp.array(error_recovered)))
 	print('Mean error (opt):', jnp.mean(jnp.array(error_opt)))
 	print('P[k(G_opt) < 3] = ', jnp.mean(jnp.array(cond_G_opt) < 3))
 
@@ -437,12 +439,6 @@ if __name__ == '__main__':
 		2.0565347e-05, 2.2540476e-05, 2.3077806e-05, 2.1551947e-05, 2.1677066e-05
 	]
 
-	print('p = 7, n = 100')
-	print('Mean error:', jnp.mean(jnp.array(error)))
-	print('Mean error (recovered):', jnp.mean(jnp.array(error_recovered)))
-	print('Mean error (opt):', jnp.mean(jnp.array(error_opt)))
-	print('P[k(G_opt) < 3] = ', jnp.mean(jnp.array(cond_G_opt) < 3))
-
 	# RESULTS with p = 10, n = 100 (WARNING: loss of orthogonality)
 
 	cond_M = [
@@ -475,8 +471,10 @@ if __name__ == '__main__':
 	]
 
 	print('p = 10, n = 100')
+	print('Mean cond(M): ', jnp.mean(jnp.array(cond_M)))
+	print('Mean cond(G_opt): ', jnp.mean(jnp.array(cond_G_opt)))
+	print('Mean cond(B_GS): ', jnp.mean(jnp.array(cond_B_GS)))
 	print('Mean error:', jnp.mean(jnp.array(error)))
-	print('Mean error (recovered):', jnp.mean(jnp.array(error_recovered)))
 	print('Mean error (opt):', jnp.mean(jnp.array(error_opt)))
 	print('P[k(G_opt) < 3] = ', jnp.mean(jnp.array(cond_G_opt) < 3))
 
@@ -512,7 +510,9 @@ if __name__ == '__main__':
 	]
 
 	print('p = 10, n = 1000')
+	print('Mean cond(M): ', jnp.mean(jnp.array(cond_M)))
+	print('Mean cond(G_opt): ', jnp.mean(jnp.array(cond_G_opt)))
+	print('Mean cond(B_GS): ', jnp.mean(jnp.array(cond_B_GS)))
 	print('Mean error:', jnp.mean(jnp.array(error)))
-	print('Mean error (recovered):', jnp.mean(jnp.array(error_recovered)))
 	print('Mean error (opt):', jnp.mean(jnp.array(error_opt)))
 	print('P[k(G_opt) < 3] = ', jnp.mean(jnp.array(cond_G_opt) < 3))

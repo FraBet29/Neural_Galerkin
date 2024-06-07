@@ -391,32 +391,39 @@ def orthogonalize(u_dth_fun, theta_flat, x_proj, L):
 	Implementation of the modified Gram-Schmidt orthonormalization algorithm.
 	Adapted from: https://github.com/tensorflow/probability/blob/v0.23.0/tensorflow_probability/python/math/gram_schmidt.py#L28
 	'''
-	print('Orthogonalization...')
+	# print('Orthogonalization...')
 
 	# u_dth = u_dth_fun(x)
 	u_dth_proj = u_dth_fun(theta_flat, x_proj.reshape(-1, 1)) # (n_proj, p)
 	p = u_dth_proj.shape[-1]
 
 	def body_fn(i, vecs): # the initial vectors in vecs are progressively replaced by the orthonormalized ones
-		vec_norm = jnp.sqrt(jnp.mean(vecs[:, i] ** 2) * L)
-		u = jnp.divide(vecs[:, i], vec_norm) # (n_proj, )
-		weights = jnp.mean(u[:, jnp.newaxis] * vecs, axis=0) * L # (p, )
-		# weights = jnp.mean(u[:, jnp.newaxis] * vecs, axis=0) / jnp.mean(vecs * vecs, axis=0) # (p, ) # NO?
-		masked_weights = jnp.where(jnp.arange(p) > i, weights, 0.)[jnp.newaxis, :] # (1, p) # consider only the first i vectors
-		vecs = vecs - jnp.multiply(u[:, jnp.newaxis], masked_weights) # (n_proj, p)
-		vecs = jnp.where(jnp.isnan(vecs), 0.0, vecs)
-		vecs = jnp.reshape(vecs, u_dth_proj.shape)
+		for _ in range(2): # reorthogonalization
+			vec_norm = jnp.sqrt(jnp.mean(vecs[:, i] ** 2) * L)
+			u = jnp.divide(vecs[:, i], vec_norm) # (n_proj, )
+			weights = jnp.mean(u[:, jnp.newaxis] * vecs, axis=0) * L # (p, )
+			# weights = jnp.where(weights > 1e-6 * jnp.max(weights), weights, 0.0) # remove the basis vectors with zero norm
+			# vecs = jnp.where(weights > 1e-6 * jnp.max(weights), vecs, 0.0) # remove the basis vectors with zero norm
+			masked_weights = jnp.where(jnp.arange(p) > i, weights, 0.)[jnp.newaxis, :] # (1, p) # consider only the first i vectors
+			vecs = vecs - jnp.multiply(u[:, jnp.newaxis], masked_weights) # (n_proj, p)
+			vecs = jnp.where(jnp.isnan(vecs), 0.0, vecs)
+			vecs = jnp.reshape(vecs, u_dth_proj.shape)
 		return vecs
 
 	u_dth_proj = jax.lax.fori_loop(0, p, body_fn, u_dth_proj)
 	vec_norm = jnp.sqrt(jnp.mean(u_dth_proj * u_dth_proj, axis=0) * L)
+	# print('Norms of the orthonormal basis:', vec_norm)
+	# u_dth_proj = jnp.where(vec_norm > 1e-6 * jnp.max(vec_norm), u_dth_proj, 0.0) # remove the basis vectors with zero norm
 	u_dth_proj = jnp.divide(u_dth_proj, vec_norm)
 	u_dth_proj = jnp.where(jnp.isnan(u_dth_proj), 0.0, u_dth_proj)
+	# vec_norm = jnp.where(vec_norm > 1e-6 * jnp.max(vec_norm), vec_norm, 0.0) # remove the basis vectors with zero norm
 
 	# orthonormality check
 	# for i in range(p):
 	# 	for j in range(p):
-	# 		print(f'inner product ({i}, {j}) =', jnp.mean(u_dth_proj[:, i] * u_dth_proj[:, j]) * L)
+	# 		inner_prod = jnp.mean(u_dth_proj[:, i] * u_dth_proj[:, j]) * L
+	# 		if i != j and inner_prod > 1e-3:
+	# 			print(f'### Warning: inner product ({i}, {j}) = {inner_prod} ###')
 
 	# recover the gram-schmidt change of basis matrix
 
@@ -432,7 +439,7 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
     '''
     Weighted sampling in the spatial domain.
     '''
-    print('Weighted sampling...')
+    # print('Weighted sampling...')
 
     # Define the scaling parameter
     alpha = problem_data.dt / epsilon
@@ -452,6 +459,7 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
             Q_proj, B_GS = orthogonalize(U_dtheta, theta_flat, x_proj, L)
             store.Q = Q_proj
             store.B_GS = B_GS
+            # print('Condition number of the Gram-Schmidt basis:', jnp.linalg.cond(B_GS))
         else:
             Q_proj, B_GS = store.Q, store.B_GS
 
@@ -461,9 +469,10 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
             n = x.shape[0]
 
         # evaluate the orthonormal basis on x via interpolation
-        Q = jnp.zeros((n, p))
-        for i in range(p):
-            Q = Q.at[:, i].set(jnp.interp(x, x_proj, Q_proj[:, i]))
+        Q = jnp.array([jnp.interp(x, x_proj, q).reshape(-1) for q in Q_proj.T]).T # (n, p)
+        # Q = jnp.zeros((n, p))
+        # for i in range(p):
+        #     Q = Q.at[:, i].set(jnp.interp(x, x_proj, Q_proj[:, i]))
 
         return (p / jnp.sum(Q ** 2, axis=1)).squeeze(), Q, B_GS # (n, )
     
@@ -475,12 +484,8 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
     log_mu = lambda y: jnp.log(mu(y)) # log(mu) = - V
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
-    print('SVGD update...')
-
     x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha)
     
-    print('End of SVGD update.')
-
     # Constrain the particles in the spatial domain
     x = jnp.clip(x, problem_data.domain[0], problem_data.domain[1])
 
