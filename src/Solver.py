@@ -21,7 +21,7 @@ from Utils import *
 #         raise ValueError(f'Unknown solver: {name}.')
 
 
-def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, sampler='uniform', diagnostic_on=False, plot_on=True, seed=0):
+def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, sampler='uniform', reg=0.0, diagnostic_on=False, plot_on=True, seed=0):
 
     key = jax.random.key(seed) # random key
 
@@ -50,7 +50,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             # return jnp.linalg.lstsq(M_fn_weighted(u_fn, theta_flat, x, w_fn), F_fn_weighted(u_fn, rhs, theta_flat, x, t, w_fn))[0]
         else:
             # Normal equations
-            return jnp.linalg.lstsq(M_fn(u_fn, theta_flat, x), F_fn(u_fn, rhs, theta_flat, x, t))[0] # (x, resid, rank, s)
+            return jnp.linalg.lstsq(M_fn(u_fn, theta_flat, x, reg), F_fn(u_fn, rhs, theta_flat, x, t))[0] # (x, resid, rank, s)
             # Least squares problem
             # return jnp.linalg.lstsq(J_fn(u_fn, theta_flat, x), rhs(theta_flat, x, t, u_fn))[0]
 
@@ -106,7 +106,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         
         # Compute the conditioning number and the eigenvalues of the M matrix
         if diagnostic_on:
-            M = M_fn(u_fn, scheme.y, x)
+            M = M_fn(u_fn, scheme.y, x, reg)
             diagnostic.cond.append(jnp.linalg.cond(M))
             eigs = jnp.linalg.eigvals(M)
             diagnostic.max_eig.append(jnp.max(eigs))
@@ -123,8 +123,8 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
                 ref_sol = problem_data.exact_sol(x_plot, scheme.t)
                 plot2 = plt.plot(x_plot, ref_sol, '--')
             plot3 = plt.plot(x_plot, U(scheme.y, x_plot.reshape(-1, 1)))
-            delta_theta_flat = predictor_corrector(u_fn, rhs, scheme.y, x, scheme.t)
-            plot4 = plt.plot(x_plot, jnp.abs(r_fn(u_fn, rhs, scheme.y, delta_theta_flat, x_plot.reshape(-1, 1), scheme.t)))
+            # delta_theta_flat = predictor_corrector(u_fn, rhs, scheme.y, x, scheme.t)
+            # plot4 = plt.plot(x_plot, jnp.abs(r_fn(u_fn, rhs, scheme.y, delta_theta_flat, x_plot.reshape(-1, 1), scheme.t)))
             plt.xlim([problem_data.domain[0], problem_data.domain[1]])
             if problem_data.exact_sol is not None:
                 plt.ylim([jnp.min(ref_sol) - 0.5, jnp.max(ref_sol) + 0.5])
@@ -132,7 +132,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             if problem_data.exact_sol is not None:
                 display(plot2)
             display(plot3)
-            display(plot4)
+            # display(plot4)
             time.sleep(0.001)
             clear_output(wait=True)
             if problem_data.exact_sol is not None:
@@ -153,7 +153,7 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
     return solution, timesteps, diagnostic
 
 
-def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform', scheme='rk45', diagnostic_on=False, plot_on=True, seed=0):
+def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform', scheme='rk45', reg=0.0, diagnostic_on=False, plot_on=True, seed=0):
 
     theta_flat, unravel = jax.flatten_util.ravel_pytree(theta) # flatten a pytree of arrays down to a 1D array
     u_fn = unraveler(net.apply, unravel) # auxiliary function that allows to evaluate the NN starting from the flattened parameters
@@ -163,7 +163,7 @@ def neural_galerkin(theta, net, problem_data, n, rhs, x_init, sampler='uniform',
     start = time.time()
 
     if scheme == 'rk45':
-        solution, timesteps, diagnostic = runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler, diagnostic_on, plot_on, seed)
+        solution, timesteps, diagnostic = runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler, reg, diagnostic_on, plot_on, seed)
     elif scheme == 'bwe':
         # solution, timesteps, diagnostic = backward_euler_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init, sampler, diagnostic_on, plot_on)
         raise NotImplementedError('Backward Euler scheme is not implemented yet.')
