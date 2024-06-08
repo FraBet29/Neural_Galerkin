@@ -23,7 +23,7 @@ from Utils import *
 
 def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, sampler='uniform', reg=0.0, diagnostic_on=False, plot_on=True, seed=0):
 
-    key = jax.random.key(seed) # random key
+    key = jax.random.key(seed)
 
     # Sample points in the spatial domain
     if sampler == 'uniform':
@@ -47,7 +47,6 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
     def rhs_rk45(t, theta_flat):
         if sampler == 'weighted':
             return assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn, problem_data, store)
-            # return jnp.linalg.lstsq(M_fn_weighted(u_fn, theta_flat, x, w_fn), F_fn_weighted(u_fn, rhs, theta_flat, x, t, w_fn))[0]
         else:
             # Normal equations
             return jnp.linalg.lstsq(M_fn(u_fn, theta_flat, x, reg), F_fn(u_fn, rhs, theta_flat, x, t))[0] # (x, resid, rank, s)
@@ -86,8 +85,6 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             #                       diagnostic_on=diagnostic_on)
             # x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=1e-3, steps=250,
             #                       diagnostic_on=diagnostic_on)
-            # x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=1e-4, steps=250,
-            #                       diagnostic_on=diagnostic_on)
         elif sampler == 'svgd_corrected':
             x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
                                   corrected=True, diagnostic_on=diagnostic_on)
@@ -111,7 +108,6 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
             eigs = jnp.linalg.eigvals(M)
             diagnostic.max_eig.append(jnp.max(eigs))
             diagnostic.min_eig.append(jnp.min(eigs))
-            diagnostic.rank.append(jnp.linalg.matrix_rank(M))
         
         # Integration step
         scheme.step()

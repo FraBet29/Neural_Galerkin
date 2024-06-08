@@ -77,7 +77,8 @@ def assemble_weighted(u_fn, rhs, theta_flat, x, t, w_fn, problem_data, store):
     f = rhs(theta_flat, x, t, u_fn) # source term
     F = jnp.mean(w[:, jnp.newaxis] * (u_dth_ort[:, :] * f[:, jnp.newaxis]), axis=0)
 
-    # print('cond(M_opt) =', jnp.linalg.cond(M))
+    print('cond(B_GS) =', jnp.linalg.cond(B_GS))
+    print('cond(M_opt) =', jnp.linalg.cond(M))
 
     # Solve the weighted least squares problem (Gv = d)
     tau = jnp.linalg.lstsq(M, F)[0]

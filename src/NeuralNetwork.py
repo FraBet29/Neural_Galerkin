@@ -125,23 +125,6 @@ class PeriodicPhiAC(nn.Module):
         phi = jax.vmap(apply_phi)(x)
 
         return phi
-    
-
-# class Rational(nn.Module):
-#     """
-#     Rational activation function
-#     Ref.: Nicolas Boullé, Yuji Nakatsukasa, and Alex Townsend,
-#           Rational neural networks,
-#           arXiv preprint arXiv:2004.01902 (2020).
-#     """
-#     alpha_init = lambda *args: jnp.array([1.1915, 1.5957, 0.5, 0.0218])
-#     beta_init = lambda *args: jnp.array([2.383, 0.0, 1.0])
-    
-#     @nn.compact
-#     def __call__(self, x):
-#         alpha = self.param('alpha', self.alpha_init)
-#         beta = self.param('beta', self.beta_init)
-#         return jnp.polyval(alpha, x) / jnp.polyval(beta, x)
 
 
 class DeepNetAC(nn.Module):

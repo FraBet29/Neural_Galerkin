@@ -112,46 +112,6 @@ def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_o
     return z
 
 
-def SVGD_update_adaptive(z0, log_mu_dx, steps=100, epsilon=1e-1, alpha=1.0, diagnostic_on=False):
-    '''
-    Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
-    '''
-    z = jnp.copy(z0) # (n, d)
-
-    if diagnostic_on:
-        z_old = jnp.copy(z)
-        wass = []
-
-    def rhs_svgd(t, z):
-        log_mu_dx_val = log_mu_dx(z.squeeze()).reshape(-1, 1) # log_mu_dx: (n, d)
-        kxy, dxkxy = SVGD_kernel(z.reshape(-1, 1), h=0.05) # kxy: (n, n), dxkxy: (n, d)
-        grad_z = alpha * (jnp.matmul(kxy, log_mu_dx_val) + dxkxy) / z0.shape[0] # grad_x: (n, d)
-        return grad_z.squeeze()
-
-    # scheme = scipy.integrate.RK45(rhs_svgd, 0, z.squeeze(), steps, max_step=epsilon, rtol=1e-4)
-    scheme = scipy.integrate.RK45(rhs_svgd, 0, z.squeeze(), 1, rtol=1e-4)
-
-    # for s in range(steps):
-    while scheme.t < 1:
-        
-        scheme.step()
-        z = scheme.y
-
-        if diagnostic_on:
-            wass.append(wasserstein_1d(z_old.squeeze(), z.squeeze(), p=2))
-            z_old = jnp.copy(z)
-    
-    if diagnostic_on:
-        # plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(s + 1) + 1))
-        plt.plot(jnp.cumsum(jnp.array(wass)) / (jnp.arange(len(wass)) + 1))
-        plt.title('Wasserstein distance (cumsum)')
-        plt.xlabel('SVGD iters')
-        plt.ylabel('Wasserstein distance (cumsum)')
-        plt.show()
-
-    return z.reshape(-1, 1)
-
-
 def SVGD_update_corrected(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_on=False):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
@@ -264,55 +224,6 @@ def high_order_sampler(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, h=0
     return x
 
 
-# @jax.jit
-# def K(x, h=0.05):
-#     xmx = jnp.expand_dims(x, 0) - jnp.expand_dims(x, 1)
-#     norm = jnp.einsum('ijk,ijk->ij', xmx, xmx)
-#     Kval = jnp.exp(- norm / h ** 2 / 2)
-#     gKval = jnp.expand_dims(Kval, -1) * (xmx / h ** 2)
-#     return (Kval, gKval)
-
-
-# def svgd(x0, g_logp, T=1000, eta=1e-3, alpha=1.0):
-
-#     @jax.jit
-#     def update_svgd(x):
-#         Kval, gKval = K(x)
-#         return alpha * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) / x0.shape[0]
-    
-#     def body_fn(i, x):
-#         return x + eta * update_svgd(x) 
-
-#     x = jax.lax.fori_loop(0, T, body_fn, x0)
-
-#     return x
-
-
-# def svgd_unbiased(x0, g_logp, T=1000, eta=1e-3, alpha=1.0, key=jax.random.key(0)):
-
-#     N, d = x0.shape
-
-#     @jax.jit
-#     def update_svgd(x, key):
-#         Kval, gKval = K(x)
-#         # U, D, V = jnp.linalg.svd(Kval)
-#         # return (eta * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) + (U @ jnp.diag(jnp.sqrt(2 * eta * D)) @ V) @ jax.random.normal(key, (N, d)), 
-#         #        jax.random.split(key)[0])
-#         L = jnp.linalg.cholesky(2 * eta * Kval + 1e-6 * jnp.eye(N)) # correction needed for numerical stability
-#         return (eta * alpha * (Kval @ g_logp(x.squeeze()).reshape(-1, 1) + gKval.sum(0)) / x0.shape[0] + L @ jax.random.normal(key, (N, d)), 
-#                 jax.random.split(key)[0])
-    
-#     def body_fn(i, state):
-#         x, key = state
-#         x, key = update_svgd(x, key)
-#         return (x, key)
-    
-#     x, _ = jax.lax.fori_loop(0, T, body_fn, (x0, key))
-    
-#     return x
-
-
-# NOTE: need to compute theta_flat or delta_theta_flat?
 @partial(jax.jit, static_argnums=(0,1,))
 def predictor_corrector(u_fn, rhs, theta_flat, x, t):
     '''
@@ -361,10 +272,7 @@ def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsi
         # x = SVGD_update_adaptive(x, log_mu_dx, alpha=alpha, diagnostic_on=diagnostic_on)
         # x = high_order_runge_kutta(x, mu, alpha=alpha, diagnostic_on=diagnostic_on)
     
-    # x = svgd(x, log_mu_dx, T=steps, eta=epsilon)
-    # x = svgd_unbiased(x, log_mu_dx, T=steps, eta=epsilon)
-
-	# Constrain the particles in the spatial domain
+    # Constrain the particles in the spatial domain
     x = jnp.clip(x, problem_data.domain[0], problem_data.domain[1])
 
     return x
@@ -385,7 +293,7 @@ class Orth():
 		self.B_GS = None
 
 
-@partial(jax.jit, static_argnums=(0, ))
+# @partial(jax.jit, static_argnums=(0, ))
 def orthogonalize(u_dth_fun, theta_flat, x_proj, L):
 	'''
 	Implementation of the modified Gram-Schmidt orthonormalization algorithm.
@@ -412,23 +320,24 @@ def orthogonalize(u_dth_fun, theta_flat, x_proj, L):
 
 	u_dth_proj = jax.lax.fori_loop(0, p, body_fn, u_dth_proj)
 	vec_norm = jnp.sqrt(jnp.mean(u_dth_proj * u_dth_proj, axis=0) * L)
-	# print('Norms of the orthonormal basis:', vec_norm)
-	# u_dth_proj = jnp.where(vec_norm > 1e-6 * jnp.max(vec_norm), u_dth_proj, 0.0) # remove the basis vectors with zero norm
+
+	# check for zero norm
+	for i in range(p):
+		if vec_norm[i] < 1e-6 * jnp.max(vec_norm):
+			print(f'### Warning: basis vector {i} has zero norm ###')
+
 	u_dth_proj = jnp.divide(u_dth_proj, vec_norm)
 	u_dth_proj = jnp.where(jnp.isnan(u_dth_proj), 0.0, u_dth_proj)
-	# vec_norm = jnp.where(vec_norm > 1e-6 * jnp.max(vec_norm), vec_norm, 0.0) # remove the basis vectors with zero norm
 
 	# orthonormality check
-	# for i in range(p):
-	# 	for j in range(p):
-	# 		inner_prod = jnp.mean(u_dth_proj[:, i] * u_dth_proj[:, j]) * L
-	# 		if i != j and inner_prod > 1e-3:
-	# 			print(f'### Warning: inner product ({i}, {j}) = {inner_prod} ###')
+	for i in range(p):
+		for j in range(p):
+			inner_prod = jnp.mean(u_dth_proj[:, i] * u_dth_proj[:, j]) * L
+			if i != j and inner_prod > 1e-4:
+				print(f'### Warning: inner product ({i}, {j}) = {inner_prod} ###')
 
 	# recover the gram-schmidt change of basis matrix
-
 	B_GS_diag = vec_norm.squeeze()
-	# B_GS_off = jnp.mean(u_dth_fun(x_proj)[:, :, jnp.newaxis] * u_dth_proj[:, jnp.newaxis, :], axis=0) * L
 	B_GS_off = jnp.mean(u_dth_proj[:, :, jnp.newaxis] * u_dth_fun(theta_flat, x_proj.reshape(-1, 1))[:, jnp.newaxis, :], axis=0) * L
 	B_GS = jnp.diag(B_GS_diag) + jnp.triu(B_GS_off, k=1).T
 
@@ -459,7 +368,6 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
             Q_proj, B_GS = orthogonalize(U_dtheta, theta_flat, x_proj, L)
             store.Q = Q_proj
             store.B_GS = B_GS
-            # print('Condition number of the Gram-Schmidt basis:', jnp.linalg.cond(B_GS))
         else:
             Q_proj, B_GS = store.Q, store.B_GS
 
@@ -470,9 +378,6 @@ def weighted_sampling(u_fn, theta_flat, problem_data, x, store, gamma=1.0, epsil
 
         # evaluate the orthonormal basis on x via interpolation
         Q = jnp.array([jnp.interp(x, x_proj, q).reshape(-1) for q in Q_proj.T]).T # (n, p)
-        # Q = jnp.zeros((n, p))
-        # for i in range(p):
-        #     Q = Q.at[:, i].set(jnp.interp(x, x_proj, Q_proj[:, i]))
 
         return (p / jnp.sum(Q ** 2, axis=1)).squeeze(), Q, B_GS # (n, )
     
