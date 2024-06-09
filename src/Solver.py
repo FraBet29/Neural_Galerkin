@@ -79,22 +79,22 @@ def runge_kutta_scheme(theta_flat, problem_data, n, u_fn, rhs, x_init=None, samp
         if sampler == 'uniform':
             x, key = uniform_sampling(problem_data, n, key)
         elif sampler == 'svgd':
-            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
+            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250, key=key,
                                   diagnostic_on=diagnostic_on)
             # x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.01, steps=250,
             #                       diagnostic_on=diagnostic_on)
             # x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=1e-3, steps=250,
             #                       diagnostic_on=diagnostic_on)
         elif sampler == 'svgd_corrected':
-            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250,
+            x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.05, steps=250, key=key,
                                   corrected=True, diagnostic_on=diagnostic_on)
             # x = adaptive_sampling(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, epsilon=0.01, steps=100,
             #                       corrected=True, diagnostic_on=diagnostic_on)
         elif sampler == 'high_order_rk':
-            x = high_order_sampler(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, h=0.05, steps=250, 
-                                   diagnostic_on=diagnostic_on)
-            # x = high_order_sampler(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, h=0.1, steps=100, 
+            # x = high_order_sampler(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, h=0.05, steps=250, 
             #                        diagnostic_on=diagnostic_on)
+            x = high_order_sampler(u_fn, rhs, scheme.y, problem_data, x, scheme.t, gamma=0.25, h=0.05, steps=100, key=key,
+                                   diagnostic_on=diagnostic_on)
         elif sampler == 'weighted':
             store.reset() # need to reset every time theta_flat is updated
             x, w_fn, store = weighted_sampling(u_fn, scheme.y, problem_data, x, store, gamma=0.25, epsilon=0.05, steps=100)

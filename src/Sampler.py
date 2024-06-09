@@ -112,12 +112,11 @@ def SVGD_update(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_o
     return z
 
 
-def SVGD_update_corrected(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, diagnostic_on=False):
+def SVGD_update_corrected(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, key=jax.random.key(0), diagnostic_on=False):
     '''
     Function adapted from: https://github.com/dilinwang820/Stein-Variational-Gradient-Descent/blob/master/python/svgd.py
     '''
     N, d = z0.shape
-    key = jax.random.key(0)
 
     z = jnp.copy(z0)
 
@@ -153,7 +152,7 @@ def SVGD_update_corrected(z0, log_mu_dx, steps=1000, epsilon=1e-3, alpha=1.0, di
     return z
 
 
-def high_order_runge_kutta(x0, log_mu_dx, T=100, h=0.05, alpha=1.0, diagnostic_on=False):
+def high_order_runge_kutta(x0, log_mu_dx, T=100, h=0.05, alpha=1.0, key=jax.random.key(0), diagnostic_on=False):
     
     x0 = x0.squeeze()
     x = jnp.copy(x0)
@@ -180,8 +179,6 @@ def high_order_runge_kutta(x0, log_mu_dx, T=100, h=0.05, alpha=1.0, diagnostic_o
     #     x = x - 3/2 * h * f(y1) + 2 * h * f(y2) + h/2 * f(y3) + sigma * jnp.sqrt(h) * csi
     #     return x, jax.random.split(key)[0]
 
-    key = jax.random.key(0)
-
     for t in range(T):
         x, key = runge_kutta_step(x, t, h, key)
         # h = h / jnp.sqrt(t + 1) # Robbins-Monro
@@ -200,13 +197,13 @@ def high_order_runge_kutta(x0, log_mu_dx, T=100, h=0.05, alpha=1.0, diagnostic_o
     return x.reshape(-1, 1)
 
 
-def high_order_sampler(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, h=0.01, steps=500, diagnostic_on=False):
+def high_order_sampler(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, h=0.01, steps=500, key=jax.random.key(0), diagnostic_on=False):
     '''
     Adaptive sampling with high-order Runge-Kutta-like method.
     '''
     # Define the scaling parameter
     # alpha = problem_data.dt / h
-    alpha = 1e-2 * min(problem_data.dt / h, 1.0)
+    alpha = 5e-3 * min(problem_data.dt / h, 1.0)
 
     # Predictor-corrector scheme
     delta_theta_flat = predictor_corrector(u_fn, rhs, theta_flat, x, t)
@@ -216,7 +213,7 @@ def high_order_sampler(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, h=0
     log_mu = lambda y: jnp.log(mu(y)) # log(mu) = - V
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
-    x = high_order_runge_kutta(x, log_mu_dx, T=steps, h=h, alpha=alpha, diagnostic_on=diagnostic_on)
+    x = high_order_runge_kutta(x, log_mu_dx, T=steps, h=h, alpha=alpha, key=key, diagnostic_on=diagnostic_on)
     
     # Constrain the particles in the spatial domain
     x = jnp.clip(x, problem_data.domain[0], problem_data.domain[1])
@@ -236,7 +233,7 @@ def predictor_corrector(u_fn, rhs, theta_flat, x, t):
     # return theta_flat_pred
 
 
-def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500, corrected=False, diagnostic_on=False):
+def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsilon=0.01, steps=500, key=jax.random.key(0), corrected=False, diagnostic_on=False):
     '''
     Adaptive sampling with SVGD.
     Args:
@@ -266,11 +263,9 @@ def adaptive_sampling(u_fn, rhs, theta_flat, problem_data, x, t, gamma=1.0, epsi
     log_mu_dx = jax.vmap(jax.grad(log_mu), 0)
 
     if corrected:
-        x = SVGD_update_corrected(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
+        x = SVGD_update_corrected(x, log_mu_dx, steps, epsilon, alpha, key=key, diagnostic_on=diagnostic_on)
     else:
         x = SVGD_update(x, log_mu_dx, steps, epsilon, alpha, diagnostic_on=diagnostic_on)
-        # x = SVGD_update_adaptive(x, log_mu_dx, alpha=alpha, diagnostic_on=diagnostic_on)
-        # x = high_order_runge_kutta(x, mu, alpha=alpha, diagnostic_on=diagnostic_on)
     
     # Constrain the particles in the spatial domain
     x = jnp.clip(x, problem_data.domain[0], problem_data.domain[1])

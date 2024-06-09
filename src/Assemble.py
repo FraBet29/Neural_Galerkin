@@ -5,7 +5,7 @@ from functools import partial
 
 # @jax.jit
 @partial(jax.jit, static_argnums=(0, ))
-def M_fn(u_fn, theta_flat, x, reg):
+def M_fn(u_fn, theta_flat, x, reg=0):
     '''
     Assemble the M matrix.
     '''
