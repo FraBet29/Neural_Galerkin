@@ -1,0 +1,11 @@
+numpy==1.26.4
+jax==0.4.26
+jaxlib==0.4.26
+jaxopt==0.8.3
+flax==0.8.2
+ipykernel==6.29.4
+ipython==8.23.0
+matplotlib==3.8.4
+matplotlib-inline==0.1.7
+scipy==1.13.0
+optax==0.2.2
